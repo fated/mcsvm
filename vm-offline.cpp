@@ -56,6 +56,14 @@ int main(int argc, char *argv[]) {
   // }
 
   model = TrainMCSVM(train, &param);
+
+  printf("Total support patterns %d\n\n", model->total_sv);
+  printf("\t\tclass\tsupport patterns per class\n");
+  printf("\t\t-----\t--------------------------\n");
+  for (int i = 0; i < model->num_classes; ++i) {
+    printf("\t\t  %d\t    %d\n", i, model->num_svs[i]);
+  }
+
   // if (param.save_model == 1) {
   //   if (SaveModel(model_file_name, model) != 0) {
   //     std::cerr << "Unable to save model file" << std::endl;
@@ -70,28 +78,25 @@ int main(int argc, char *argv[]) {
   //   output_file << '\n';
   // }
 
-  // for (int i = 0; i < test->num_ex; ++i) {
-  //   predict_label = PredictMCSVM(model, test->x[i]);
+  for (int i = 0; i < test->num_ex; ++i) {
+    int predict_label = PredictMCSVM(model, test->x[i]);
 
-  //   output_file << std::resetiosflags(std::ios::fixed) << predict_label
-  //               << std::setiosflags(std::ios::fixed);
-
-  //   output_file << '\n';
-  //   if (predict_label == test->y[i]) {
-  //     ++num_correct;
-  //   }
-  // }
+    output_file << test->y[i] << ' ' << predict_label << '\n';
+    if (predict_label == test->y[i]) {
+      ++num_correct;
+    }
+  }
 
   // std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
 
-  // std::cout << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
-  //           << " (" << num_correct << '/' << test->num_ex << ") " << '\n';
+  std::cout << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
+            << " (" << num_correct << '/' << test->num_ex << ") " << '\n';
   // output_file.close();
 
   // std::cout << "Time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count()/1000.0 << " s\n";
 
   FreeProblem(train);
-  // FreeProblem(test);
+  FreeProblem(test);
   // FreeModel(model);
   // FreeParam(&param);
 
