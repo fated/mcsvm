@@ -42,4 +42,7 @@ void FreeMCSVMParam(struct MCSVMParameter *param);
 void InitMCSVMParam(struct MCSVMParameter *param);
 const char *CheckMCSVMParameter(const struct MCSVMParameter *param);
 
+void SetPrintNull();
+void SetPrintCout();
+
 #endif  // LIBVM_MCSVM_H_

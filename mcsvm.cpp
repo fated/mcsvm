@@ -6,7 +6,7 @@
 #include <cfloat>
 #include <cstdarg>
 
-typedef float Qfloat;
+typedef double Qfloat;
 typedef signed char schar;
 
 static void PrintCout(const char *s) {
@@ -200,7 +200,7 @@ class QMatrix {
 
 class Kernel : public QMatrix {
  public:
-  Kernel(int l, Node *const *x, const MCSVMParameter& param);
+  Kernel(int l, Node *const *x, const MCSVMParameter &param);
   virtual ~Kernel();
   static double KernelFunction(const Node *x, const Node *y, const MCSVMParameter& param);
   virtual Qfloat *get_Q(int column, int len) const = 0;
@@ -369,10 +369,7 @@ double Kernel::KernelFunction(const Node *x, const Node *y, const MCSVMParameter
 
 class RedOpt {
  public:
-  RedOpt() : redopt_type_(EXACT), delta_(1e-4)
-  {}
-
-  RedOpt(int num_classes, MCSVMParameter *param);
+  RedOpt(int num_classes, const MCSVMParameter &param);
   virtual ~RedOpt();
   void set_a(double a) {
     a_ = a;
@@ -395,10 +392,9 @@ class RedOpt {
   void set_alpha(double *alpha) {
     alpha_ = alpha;
   }
-  int (RedOpt::*redopt_function)();
-
- protected:
-  int GetMarginError(const double beta);
+  int RedOptFunction() {
+    return (this->*redopt_function)();
+  }
 
  private:
   int num_classes_;
@@ -418,15 +414,17 @@ class RedOpt {
     alpha_[i0] = -temp;
     alpha_[i1] = temp;
   }
+  int (RedOpt::*redopt_function)();
   int RedOptExact();
   int RedOptApprox();
   int RedOptAnalyticBinary();
+  int GetMarginError(const double beta);
 };
 
-RedOpt::RedOpt(int num_classes, MCSVMParameter *param)
+RedOpt::RedOpt(int num_classes, const MCSVMParameter &param)
     :num_classes_(num_classes),
-     redopt_type_(param->redopt_type),
-     delta_(param->delta) {
+     redopt_type_(param.redopt_type),
+     delta_(param.delta) {
   switch (redopt_type_) {
     case EXACT: {
       redopt_function = &RedOpt::RedOptExact;
@@ -654,16 +652,10 @@ int RedOpt::GetMarginError(const double beta) {
 
 class SPOC_Q : public Kernel {
  public:
-  SPOC_Q()
-      :cache_(NULL),
-       QD_(NULL),
-       Kernel()
-  {}
-
-  SPOC_Q(Problem *prob, MCSVMParameter *param) : Kernel(prob->num_ex, prob->x, param) {
-    cache_ = new Cache(prob->num_ex, static_cast<long int>(param->cache_size*(1<<20)));
-    QD_ = new double[prob->num_ex];
-    for (int i = 0; i < prob->num_ex; ++i)
+  SPOC_Q(const Problem &prob, const MCSVMParameter &param) : Kernel(prob.num_ex, prob.x, param) {
+    cache_ = new Cache(prob.num_ex, static_cast<long int>(param.cache_size*(1<<20)));
+    QD_ = new double[prob.num_ex];
+    for (int i = 0; i < prob.num_ex; ++i)
       QD_[i] = (this->*kernel_function)(i, i);
   }
 
@@ -703,8 +695,8 @@ class SPOC_Q : public Kernel {
 
 class Spoc {
  public:
-  Spoc(Problem *prob, MCSVMParameter &param, int num_classes);
-  ~Spoc();
+  Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_classes);
+  virtual ~Spoc();
   void Solve(double epsilon);
   double get_max_psi() {
     return max_psi_;
@@ -722,7 +714,7 @@ class Spoc {
   }
   double **get_tau() {
     double **tau;
-    tau = new double[num_ex_];
+    tau = new double*[num_ex_];
     clone(*tau, *tau_, num_ex_ * num_classes_);
     for (int i = 1; i < num_ex_; ++i) {
       tau[i] = tau[i-1] + num_classes_;
@@ -744,7 +736,7 @@ class Spoc {
   int CountNumSVs();
 
  protected:
-  RedOpt red_opt_;
+  RedOpt *red_opt_;
   void ChooseNextPattern(int *pattern_list, int num_patterns);
   void UpdateMatrix(double *kernel_next_p);
   double CalcTrainError(double beta);
@@ -770,15 +762,14 @@ class Spoc {
   double *old_tau_;
   double **matrix_f_;
   double **tau_;
-  SPOC_Q spoc_Q_;
+  SPOC_Q *spoc_Q_;
 };
 
-Spoc::Spoc(Problem *prob, MCSVMParameter &param, int num_classes)
+Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_classes)
     :num_ex_(prob->num_ex),
      num_classes_(num_classes),
-     beta_(param.beta),
-     cache_size_(param.cache_size),
-     y_(prob->y) {
+     y_(y),
+     beta_(param->beta) {
 
   Info("\nOptimizer (SPOC)  (version 1.0)\n");
   Info("Initializing ... start\n");
@@ -822,8 +813,8 @@ Spoc::Spoc(Problem *prob, MCSVMParameter &param, int num_classes)
 
   // allocate memory end
 
-  red_opt_ = new RedOpt(num_classes_, &param);
-  spoc_Q_ = new SPOC_Q(prob, param);
+  red_opt_ = new RedOpt(num_classes_, *param);
+  spoc_Q_ = new SPOC_Q(*prob, *param);
 
   num_support_pattern_ = 0;
   num_zero_pattern_ = 0;
@@ -831,7 +822,7 @@ Spoc::Spoc(Problem *prob, MCSVMParameter &param, int num_classes)
   // initialize begins
 
   // vector_a
-  vector_a_ = spoc_Q_.get_QD();
+  vector_a_ = spoc_Q_->get_QD();
 
   // matrix_eye
   for (int r = 0; r < num_classes_; ++r) {
@@ -927,18 +918,18 @@ void Spoc::Solve(double epsilon) {
     }
 
     if (max_psi_ > epsilon * beta_) {
-      red_opt_.set_a(vector_a_[next_p_]);
+      red_opt_->set_a(vector_a_[next_p_]);
       for (int r = 0; r < num_classes_; ++r) {
-        double b = matrix_f_[next_p_][r] - red_opt_.get_a() * tau_[next_p_][r];
-        red_opt_.set_b(b, r);
+        double b = matrix_f_[next_p_][r] - red_opt_->get_a() * tau_[next_p_][r];
+        red_opt_->set_b(b, r);
       }
-      red_opt_.set_y(y_[next_p_]);
+      red_opt_->set_y(y_[next_p_]);
       for (int r = 0; r < num_classes_; ++r) {
         old_tau_[r] = tau_[next_p_][r];
       }
-      red_opt_.set_alpha(tau_[next_p_]);
+      red_opt_->set_alpha(tau_[next_p_]);
 
-      mistake_k = red_opt_->*redopt_function();
+      mistake_k = red_opt_->RedOptFunction();
 
       for (int r = 0; r < num_classes_; ++r) {
         delta_tau_[r] = tau_[next_p_][r] - old_tau_[r];
@@ -1099,7 +1090,7 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
 
   // train MSCVM model
   double epsilon_current;
-  Spoc s = new Spoc(prob, param, num_classes);
+  Spoc s(prob, param, alter_labels, num_classes);
 
   Info("Epsilon decreasing from %e to %e\n", param->epsilon0, param->epsilon);
   epsilon_current = param->epsilon0;

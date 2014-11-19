@@ -17,8 +17,8 @@ int main(int argc, char *argv[]) {
   struct Problem *train, *test;
   struct MCSVMModel *model;
   int num_correct = 0;
-  double avg_lower_bound = 0, avg_upper_bound = 0, avg_brier = 0, avg_logloss = 0;
-  const char *error_message;
+  // double avg_lower_bound = 0, avg_upper_bound = 0, avg_brier = 0, avg_logloss = 0;
+  // const char *error_message;
 
   ParseCommandLine(argc, argv, train_file_name, test_file_name, output_file_name, model_file_name);
   // error_message = CheckParameter(&param);
@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::high_resolution_clock::now();
+  // std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::high_resolution_clock::now();
 
   // if (param.load_model == 1) {
   //   model = LoadModel(model_file_name);
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
   //   model = TrainVM(train, &param);
   // }
 
-  model = TrainMCSVM
+  model = TrainMCSVM(train, &param);
   // if (param.save_model == 1) {
   //   if (SaveModel(model_file_name, model) != 0) {
   //     std::cerr << "Unable to save model file" << std::endl;
@@ -70,30 +70,30 @@ int main(int argc, char *argv[]) {
   //   output_file << '\n';
   // }
 
-  for (int i = 0; i < test->num_ex; ++i) {
-    predict_label = PredictMCSVM(model, test->x[i]);
+  // for (int i = 0; i < test->num_ex; ++i) {
+  //   predict_label = PredictMCSVM(model, test->x[i]);
 
-    output_file << std::resetiosflags(std::ios::fixed) << predict_label
-                << std::setiosflags(std::ios::fixed);
+  //   output_file << std::resetiosflags(std::ios::fixed) << predict_label
+  //               << std::setiosflags(std::ios::fixed);
 
-    output_file << '\n';
-    if (predict_label == test->y[i]) {
-      ++num_correct;
-    }
-  }
+  //   output_file << '\n';
+  //   if (predict_label == test->y[i]) {
+  //     ++num_correct;
+  //   }
+  // }
 
-  std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
+  // std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
 
-  std::cout << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
-            << " (" << num_correct << '/' << test->num_ex << ") " << '\n';
-  output_file.close();
+  // std::cout << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
+  //           << " (" << num_correct << '/' << test->num_ex << ") " << '\n';
+  // output_file.close();
 
-  std::cout << "Time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count()/1000.0 << " s\n";
+  // std::cout << "Time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count()/1000.0 << " s\n";
 
   FreeProblem(train);
-  FreeProblem(test);
-  FreeModel(model);
-  FreeParam(&param);
+  // FreeProblem(test);
+  // FreeModel(model);
+  // FreeParam(&param);
 
   return 0;
 }
@@ -136,15 +136,19 @@ void ExitWithHelp() {
 
 void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_file_name, char *output_file_name, char *model_file_name) {
   int i;
-  param.taxonomy_type = KNN;
-  param.save_model = 0;
-  param.load_model = 0;
-  param.num_categories = 4;
-  param.probability = 0;
-  param.knn_param = new KNNParameter;
-  param.svm_param = NULL;
+  param.redopt_type = EXACT;
+  param.kernel_type = RBF;
+  // param.save_model = 0;
+  // param.load_model = 0;
+  param.beta = 1e-4;
+  param.cache_size = 4096;
+  param.degree = 1;
+  param.gamma = 1;
+  param.coef0 = 1;
+  param.epsilon = 1e-3;
+  param.epsilon0 = (1-1e-6);
+  param.delta = 1e-4;
   SetPrintCout();
-  InitKNNParam(param.knn_param);
 
   for (i = 1; i < argc; ++i) {
     if (argv[i][0] != '-') break;
@@ -153,117 +157,68 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
     switch (argv[i][1]) {
       case 't': {
         ++i;
-        param.taxonomy_type = std::atoi(argv[i]);
-        if (param.taxonomy_type == SVM_EL ||
-            param.taxonomy_type == SVM_ES ||
-            param.taxonomy_type == SVM_KM) {
-          FreeKNNParam(param.knn_param);
-          delete param.knn_param;
-          param.svm_param = new SVMParameter;
-          InitSVMParam(param.svm_param);
-        }
+        param.redopt_type = std::atoi(argv[i]);
         break;
       }
-      case 'k': {
+      // case 's': {
+      //   ++i;
+      //   param.save_model = 1;
+      //   std::strcpy(model_file_name, argv[i]);
+      //   break;
+      // }
+      // case 'l': {
+      //   ++i;
+      //   param.load_model = 1;
+      //   std::strcpy(model_file_name, argv[i]);
+      //   break;
+      // }
+      case 'b': {
         ++i;
-        param.knn_param->num_neighbors = std::atoi(argv[i]);
-        break;
-      }
-      case 'c': {
-        ++i;
-        param.num_categories = std::atoi(argv[i]);
+        param.beta = std::atof(argv[i]);
         break;
       }
       case 's': {
         ++i;
-        param.save_model = 1;
-        std::strcpy(model_file_name, argv[i]);
+        param.kernel_type = std::atoi(argv[i]);
         break;
       }
-      case 'l': {
+      case 'd': {
         ++i;
-        param.load_model = 1;
-        std::strcpy(model_file_name, argv[i]);
+        param.degree = std::atoi(argv[i]);
         break;
       }
-      case 'b': {
+      case 'g': {
         ++i;
-        param.probability = std::atoi(argv[i]);
+        param.gamma = std::atof(argv[i]);
+        break;
+      }
+      case 'r': {
+        ++i;
+        param.coef0 = std::atof(argv[i]);
+        break;
+      }
+      case 'n': {
+        ++i;
+        param.delta = std::atof(argv[i]);
+        break;
+      }
+      case 'm': {
+        ++i;
+        param.cache_size = std::atoi(argv[i]);
+        break;
+      }
+      case 'e': {
+        ++i;
+        param.epsilon = std::atof(argv[i]);
         break;
       }
       case 'p': {
-        if (argv[i][2]) {
-          switch (argv[i][2]) {
-            case 's': {
-              ++i;
-              param.svm_param->svm_type = std::atoi(argv[i]);
-              break;
-            }
-            case 't': {
-              ++i;
-              param.svm_param->kernel_type = std::atoi(argv[i]);
-              break;
-            }
-            case 'd': {
-              ++i;
-              param.svm_param->degree = std::atoi(argv[i]);
-              break;
-            }
-            case 'g': {
-              ++i;
-              param.svm_param->gamma = std::atof(argv[i]);
-              break;
-            }
-            case 'r': {
-              ++i;
-              param.svm_param->coef0 = std::atof(argv[i]);
-              break;
-            }
-            case 'n': {
-              ++i;
-              param.svm_param->nu = std::atof(argv[i]);
-              break;
-            }
-            case 'm': {
-              ++i;
-              param.svm_param->cache_size = std::atof(argv[i]);
-              break;
-            }
-            case 'c': {
-              ++i;
-              param.svm_param->C = std::atof(argv[i]);
-              break;
-            }
-            case 'e': {
-              ++i;
-              param.svm_param->eps = std::atof(argv[i]);
-              break;
-            }
-            case 'h': {
-              ++i;
-              param.svm_param->shrinking = std::atoi(argv[i]);
-              break;
-            }
-            case 'q': {
-              SetPrintNull();
-              break;
-            }
-            case 'w': {  // weights [option]: '-w1' means weight of '1'
-              ++i;
-              ++param.svm_param->num_weights;
-              param.svm_param->weight_labels = (int *)realloc(param.svm_param->weight_labels, sizeof(int)*static_cast<unsigned long int>(param.svm_param->num_weights));
-              param.svm_param->weights = (double *)realloc(param.svm_param->weights, sizeof(double)*static_cast<unsigned long int>(param.svm_param->num_weights));
-              param.svm_param->weight_labels[param.svm_param->num_weights-1] = std::atoi(&argv[i-1][3]); // get and convert 'i' to int
-              param.svm_param->weights[param.svm_param->num_weights-1] = std::atof(argv[i]);
-              break;
-              // TODO: change realloc function
-            }
-            default: {
-              std::cerr << "Unknown SVM option: " << argv[i] << std::endl;
-              ExitWithHelp();
-            }
-          }
-        }
+        ++i;
+        param.epsilon0 = std::atof(argv[i]);
+        break;
+      }
+      case 'q': {
+        SetPrintNull();
         break;
       }
       default: {
