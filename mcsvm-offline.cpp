@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
   // const char *error_message;
 
   ParseCommandLine(argc, argv, train_file_name, test_file_name, output_file_name, model_file_name);
-  // error_message = CheckParameter(&param);
+  // error_message = CheckMCSVMParameter(&param);
 
   // if (error_message != NULL) {
   //   std::cerr << error_message << std::endl;
@@ -31,20 +31,13 @@ int main(int argc, char *argv[]) {
   train = ReadProblem(train_file_name);
   test = ReadProblem(test_file_name);
 
-  // if ((param.taxonomy_type == SVM_EL ||
-  //      param.taxonomy_type == SVM_ES ||
-  //      param.taxonomy_type == SVM_KM) &&
-  //     param.svm_param->gamma == 0) {
-  //   param.svm_param->gamma = 1.0 / train->max_index;
-  // }
-
   std::ofstream output_file(output_file_name);
   if (!output_file.is_open()) {
     std::cerr << "Unable to open output file: " << output_file_name << std::endl;
     exit(EXIT_FAILURE);
   }
 
-  // std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::high_resolution_clock::now();
+  std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::high_resolution_clock::now();
 
   // if (param.load_model == 1) {
   //   model = LoadModel(model_file_name);
@@ -52,7 +45,7 @@ int main(int argc, char *argv[]) {
   //     exit(EXIT_FAILURE);
   //   }
   // } else {
-  //   model = TrainVM(train, &param);
+  //   model = TrainMCSVM(train, &param);
   // }
 
   model = TrainMCSVM(train, &param);
@@ -87,13 +80,13 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
+  std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
 
   std::cout << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
             << " (" << num_correct << '/' << test->num_ex << ") " << '\n';
-  // output_file.close();
+  output_file.close();
 
-  // std::cout << "Time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count()/1000.0 << " s\n";
+  std::cout << "Time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count()/1000.0 << " s\n";
 
   FreeProblem(train);
   FreeProblem(test);
