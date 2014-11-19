@@ -1136,7 +1136,71 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
 }
 
 double PredictMCSVM(const struct MCSVMModel *model, const struct Node *x) {
+  int num_classes = model->num_classes;
+  int *num_support_tau = new int[num_classes];
 
+  for (int i = 0; i < num_classes; ++i) {
+    num_support_tau[i] = 0;
+  }
+
+  int **support_tau_lists;
+  support_tau_lists = new int*[num_classes];
+  *support_tau_lists = new int[num_classes * model->num_support_pattern];
+
+  for (int i = 1; i < num_classes; ++i) {
+    support_tau_lists[i] = support_tau_lists[i-1] + model->num_support_pattern;
+  }
+  for (int i = 0; i < num_classes; ++i) {
+    for (int j = 0; j < model->num_support_pattern; ++j) {
+      if (model->tau[j][i] != 0) {
+        support_tau_lists[i][num_support_tau[i]++] = j;
+      }
+    }
+  }
+
+  // Info("Total support patterns %ld\n\n", model->num_support_pattern);
+  // Info("\t\tclass\tsupport patterns per class\n");
+  // Info("\t\t-----\t--------------------------\n");
+  // for (int i = 0; i < num_classes; ++i) {
+  //   Info("\t\t  %ld\t    %ld\n", i, num_support_tau[i]);
+  // }
+
+  double sim_score;
+  double max_sim_score;
+  long n_max_sim_score;
+  long best_y;
+  long supp_pattern_index;
+
+  double *kernel_values = new double[model->num_support_pattern];
+
+  for (int i = 0; i < model->num_support_pattern; ++i) {
+    kernel_values[i] = Kernel::KernelFunction(x, model->svs[i], model->param);
+  }
+
+  n_max_sim_score =0;
+  max_sim_score = -DBL_MAX;
+  best_y = -1;
+
+  for (int i = 0; i < num_classes; ++i) {
+    sim_score = 0;
+    for (int j = 0; j < num_support_tau[i]; ++j) {
+      supp_pattern_index = support_tau_lists[i][j];
+      sim_score += model->tau[supp_pattern_index][i] * kernel_values[supp_pattern_index];
+    }
+
+    if (sim_score > max_sim_score) {
+      max_sim_score = sim_score;
+      n_max_sim_score = 1;
+      best_y = i;
+    } else {
+      if (sim_score == max_sim_score) {
+        n_max_sim_score++;
+      }
+    }
+  }
+
+  delete[] kernel_values;
+  return best_y;
 }
 
 int SaveMCSVMModel(std::ofstream &model_file, const struct MCSVMModel *model) {
