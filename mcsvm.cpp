@@ -45,10 +45,12 @@ int CompareNodes(const void *n1, const void *n2) {
 }
 
 int CompareInt(const void *n1, const void *n2) {
-  if ( *(int*)n1 <  *(int*)n2 ) return -1;
-  if ( *(int*)n1 == *(int*)n2 ) return 0;
-  if ( *(int*)n1 >  *(int*)n2 ) return 1;
-  return 0;
+  if (*(int*)n1 < *(int*)n2)
+    return (-1);
+  else if (*(int*)n1 > *(int*)n2)
+    return (1);
+  else
+    return (0);
 }
 
 //
@@ -283,7 +285,7 @@ Kernel::Kernel(int l, Node *const *x, const MCSVMParameter &param)
       x_square_[i] = Dot(x_[i], x_[i]);
     }
   } else {
-    x_square_ = 0;
+    x_square_ = NULL;
   }
 }
 
@@ -697,13 +699,7 @@ class Spoc {
  public:
   Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_classes);
   virtual ~Spoc();
-  void Solve(double epsilon);
-  double get_max_psi() {
-    return max_psi_;
-  }
-  double get_beta() {
-    return beta_;
-  }
+  void Solve();
   int get_num_support_pattern() {
     return num_support_pattern_;
   }
@@ -721,27 +717,13 @@ class Spoc {
     }
     return tau;
   }
-  void PrintEpsilon(double epsilon) {
-    Info("%11.5e   %7ld   %10.3e   %7.2f%%      %7.2f%%\n",
-      epsilon, num_support_pattern_, max_psi_/beta_, CalcTrainError(beta_), CalcTrainError(0));
-
-    return;
-  }
-  double NextEpsilon(double epsilon_cur, double epsilon) {
-    double e = epsilon_cur / std::log10(iteration_);
-    iteration_ += 2;
-
-    return (std::max(e, epsilon));
-  }
   int CountNumSVs();
 
  protected:
-  RedOpt *red_opt_;
-  void ChooseNextPattern(int *pattern_list, int num_patterns);
-  void UpdateMatrix(double *kernel_next_p);
-  double CalcTrainError(double beta);
 
  private:
+  const double epsilon_;
+  const double epsilon0_;
   int iteration_;
   int num_ex_;
   int num_classes_;
@@ -754,19 +736,39 @@ class Spoc {
   int *zero_pattern_list_;
   int **matrix_eye_;
   double max_psi_;
+  double beta_;
   double *row_matrix_f_next_p_;
   double *vector_a_;
   double *vector_b_;
-  double beta_;
   double *delta_tau_;
   double *old_tau_;
   double **matrix_f_;
   double **tau_;
   SPOC_Q *spoc_Q_;
+  RedOpt *red_opt_;
+
+  void ChooseNextPattern(int *pattern_list, int num_patterns);
+  void UpdateMatrix(double *kernel_next_p);
+  double CalcTrainError(double beta);
+  void PrintEpsilon(double epsilon) {
+    Info("%11.5e   %7ld   %10.3e   %7.2f%%      %7.2f%%\n",
+      epsilon, num_support_pattern_, max_psi_/beta_, CalcTrainError(beta_), CalcTrainError(0));
+
+    return;
+  }
+  double NextEpsilon(double epsilon_cur, double epsilon) {
+    double e = epsilon_cur / std::log10(iteration_);
+    iteration_ += 2;
+
+    return (std::max(e, epsilon));
+  }
+  void CalcEpsilon(double epsilon);
 };
 
 Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_classes)
-    :iteration_(12),
+    :epsilon_(param->epsilon),
+     epsilon0_(param->epsilon0),
+     iteration_(12),
      num_ex_(prob->num_ex),
      num_classes_(num_classes),
      y_(y),
@@ -864,7 +866,6 @@ Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_cla
   ChooseNextPattern(support_pattern_list_, num_support_pattern_);
 
   // initialize ends
-
   Info("Initializing ... done\n");
 }
 
@@ -904,7 +905,26 @@ Spoc::~Spoc() {
   }
 }
 
-void Spoc::Solve(double epsilon) {
+void Spoc::Solve() {
+  double epsilon_current;
+
+  Info("Epsilon decreasing from %e to %e\n", epsilon0_, epsilon_);
+  epsilon_current = epsilon0_;
+
+  Info("\nNew Epsilon   No. SPS      Max Psi   Train Error   Margin Error\n");
+  Info("-----------   -------      -------   -----------   ------------\n");
+
+  while (max_psi_ > epsilon_ * beta_) {
+    PrintEpsilon(epsilon_current);
+    CalcEpsilon(epsilon_current);
+    epsilon_current = NextEpsilon(epsilon_current, epsilon_);
+  }
+  PrintEpsilon(epsilon_);
+
+  return;
+}
+
+void Spoc::CalcEpsilon(double epsilon) {
   int supp_only =1;
   int cont = 1;
   int mistake_k;
@@ -999,6 +1019,8 @@ void Spoc::ChooseNextPattern(int *pattern_list, int num_patterns) {
   }
   next_p_ = pattern_list[next_p_list_];
   row_matrix_f_next_p_ = matrix_f_[p];
+
+  return;
 }
 
 void Spoc::UpdateMatrix(double *kernel_next_p) {
@@ -1090,21 +1112,8 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
   }
 
   // train MSCVM model
-  double epsilon_current;
   Spoc s(prob, param, alter_labels, num_classes);
-
-  Info("Epsilon decreasing from %e to %e\n", param->epsilon0, param->epsilon);
-  epsilon_current = param->epsilon0;
-
-  Info("\nNew Epsilon   No. SPS      Max Psi   Train Error   Margin Error\n");
-  Info("-----------   -------      -------   -----------   ------------\n");
-
-  while (s.get_max_psi() > param->epsilon * s.get_beta()) {
-    s.PrintEpsilon(epsilon_current);
-    s.Solve(epsilon_current);
-    epsilon_current = s.NextEpsilon(epsilon_current, param->epsilon);
-  }
-  s.PrintEpsilon(param->epsilon);
+  s.Solve();
 
   // build output
   int *support_pattern_list = s.get_support_pattern_list();
@@ -1236,4 +1245,5 @@ void InitMCSVMParam(struct MCSVMParameter *param) {
 
 const char *CheckMCSVMParameter(const struct MCSVMParameter *param) {
 
+  return NULL;
 }
