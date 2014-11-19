@@ -24,11 +24,13 @@ struct MCSVMModel {
   struct MCSVMParameter param;
   int num_ex;
   int num_classes;  // number of classes (k)
-  int num_support_pattern;
-  int is_voted;
-  int *support_pattern_list;
+  int total_sv;
+  int *labels;
   int *votes_weight;
+  int *num_svs;
+  int *sv_indices;
   double **tau;
+  struct Node **svs;
 };
 
 MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *param);

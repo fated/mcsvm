@@ -44,10 +44,10 @@ int CompareNodes(const void *n1, const void *n2) {
     return (0);
 }
 
-int CompareLong(const void *n1, const void *n2) {
-  if ( *(long*)n1 <  *(long*)n2 ) return -1;
-  if ( *(long*)n1 == *(long*)n2 ) return 0;
-  if ( *(long*)n1 >  *(long*)n2 ) return 1;
+int CompareInt(const void *n1, const void *n2) {
+  if ( *(int*)n1 <  *(int*)n2 ) return -1;
+  if ( *(int*)n1 == *(int*)n2 ) return 0;
+  if ( *(int*)n1 >  *(int*)n2 ) return 1;
   return 0;
 }
 
@@ -742,7 +742,7 @@ class Spoc {
   double CalcTrainError(double beta);
 
  private:
-  int iteration_ = 12;
+  int iteration_;
   int num_ex_;
   int num_classes_;
   int num_support_pattern_;
@@ -766,7 +766,8 @@ class Spoc {
 };
 
 Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_classes)
-    :num_ex_(prob->num_ex),
+    :iteration_(12),
+     num_ex_(prob->num_ex),
      num_classes_(num_classes),
      y_(y),
      beta_(param->beta) {
@@ -1111,32 +1112,80 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
   double **tau = s.get_tau();
 
   Info("\nNo. support pattern %ld ( %ld at bound )\n", num_support_pattern, s.CountNumSVs());
-  qsort(support_pattern_list, static_cast<size_t>(num_support_pattern), sizeof(long), &CompareLong);
+  qsort(support_pattern_list, static_cast<size_t>(num_support_pattern), sizeof(int), &CompareInt);
 
-  for (int i = 0; i < num_support_pattern; ++i) {
-    for (int r = 0; r < num_classes; ++r) {
-      tau[i][r] = tau[support_pattern_list[i]][r];
-    }
+  model->total_sv = num_support_pattern;
+  model->tau = new double*[num_classes];
+  model->svs = new Node*[model->total_sv];
+  model->num_svs = new int[num_classes];
+  model->sv_indices = new int[model->total_sv];
+
+  for (int i = 0; i < num_classes; ++i) {
+    model->num_svs[i] = 0;
+    model->tau[i] = new double[model->total_sv];
   }
-  for (int i = num_support_pattern; i < num_ex; ++i) {
-    for (int r = 0; r < num_classes; ++r) {
-      tau[i][r] = 0;
+
+  for (int i = 0; i < model->total_sv; ++i) {
+    model->sv_indices[i] = support_pattern_list[i] + 1;
+    model->svs[i] = prob->x[support_pattern_list[i]];
+  }
+
+  for (int i = 0; i < num_classes; ++i) {
+    for (int j = 0; j < model->total_sv; ++j) {
+      model->tau[i][j] = tau[support_pattern_list[j]][i];
+      if (tau[support_pattern_list[j]][i] != 0) {
+        ++model->num_svs[i];
+      }
     }
   }
 
   model->num_ex = num_ex;
   model->num_classes = num_classes;
-  model->num_support_pattern = num_support_pattern;
-  model->is_voted = 0;
-  model->support_pattern_list = support_pattern_list;
+  model->labels = labels;
   model->votes_weight = NULL;
-  model->tau = tau;
 
   return (model);
 }
 
 double PredictMCSVM(const struct MCSVMModel *model, const struct Node *x) {
+  int num_classes = model->num_classes;
+  int total_sv = model->total_sv;
 
+  double max_sim_score;
+  long n_max_sim_score;
+  long best_y;
+
+  double *kernel_values = new double[total_sv];
+
+  for (int i = 0; i < total_sv; ++i) {
+    kernel_values[i] = Kernel::KernelFunction(x, model->svs[i], model->param);
+  }
+
+  n_max_sim_score =0;
+  max_sim_score = -DBL_MAX;
+  best_y = -1;
+
+  for (int i = 0; i < num_classes; ++i) {
+    double sim_score = 0;
+    for (int j = 0; j < total_sv; ++j) {
+      if (model->tau[i][j] != 0) {
+        sim_score += model->tau[i][j] * kernel_values[j];
+      }
+    }
+
+    if (sim_score > max_sim_score) {
+      max_sim_score = sim_score;
+      n_max_sim_score = 1;
+      best_y = i;
+    } else {
+      if (sim_score == max_sim_score) {
+        n_max_sim_score++;
+      }
+    }
+  }
+
+  delete[] kernel_values;
+  return model->labels[best_y];
 }
 
 int SaveMCSVMModel(std::ofstream &model_file, const struct MCSVMModel *model) {
