@@ -18,15 +18,15 @@ int main(int argc, char *argv[]) {
   struct MCSVMModel *model;
   int num_correct = 0;
   // double avg_lower_bound = 0, avg_upper_bound = 0, avg_brier = 0, avg_logloss = 0;
-  // const char *error_message;
+  const char *error_message;
 
   ParseCommandLine(argc, argv, train_file_name, test_file_name, output_file_name, model_file_name);
-  // error_message = CheckMCSVMParameter(&param);
+  error_message = CheckMCSVMParameter(&param);
 
-  // if (error_message != NULL) {
-  //   std::cerr << error_message << std::endl;
-  //   exit(EXIT_FAILURE);
-  // }
+  if (error_message != NULL) {
+    std::cerr << error_message << std::endl;
+    exit(EXIT_FAILURE);
+  }
 
   train = ReadProblem(train_file_name);
   test = ReadProblem(test_file_name);
@@ -39,16 +39,14 @@ int main(int argc, char *argv[]) {
 
   std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::high_resolution_clock::now();
 
-  // if (param.load_model == 1) {
-  //   model = LoadModel(model_file_name);
-  //   if (model == NULL) {
-  //     exit(EXIT_FAILURE);
-  //   }
-  // } else {
-  //   model = TrainMCSVM(train, &param);
-  // }
-
-  model = TrainMCSVM(train, &param);
+  if (param.load_model == 1) {
+    model = LoadMCSVMModel(model_file_name);
+    if (model == NULL) {
+      exit(EXIT_FAILURE);
+    }
+  } else {
+    model = TrainMCSVM(train, &param);
+  }
 
   printf("Total support patterns %d\n\n", model->total_sv);
   printf("\t\tclass\tsupport patterns per class\n");
@@ -57,11 +55,11 @@ int main(int argc, char *argv[]) {
     printf("\t\t  %d\t    %d\n", i, model->num_svs[i]);
   }
 
-  // if (param.save_model == 1) {
-  //   if (SaveModel(model_file_name, model) != 0) {
-  //     std::cerr << "Unable to save model file" << std::endl;
-  //   }
-  // }
+  if (param.save_model == 1) {
+    if (SaveMCSVMModel(model_file_name, model) != 0) {
+      std::cerr << "Unable to save model file" << std::endl;
+    }
+  }
 
   // if (param.probability == 1) {
   //   output_file << "                      ";
@@ -90,45 +88,36 @@ int main(int argc, char *argv[]) {
 
   FreeProblem(train);
   FreeProblem(test);
-  // FreeModel(model);
-  // FreeParam(&param);
+  FreeMCSVMModel(model);
+  FreeMCSVMParam(&param);
 
   return 0;
 }
 
 void ExitWithHelp() {
-  std::cout << "Usage: vm-offline [options] train_file test_file [output_file]\n"
+  std::cout << "Usage: mcsvm-offline [options] train_file test_file [output_file]\n"
             << "options:\n"
-            << "  -t taxonomy_type : set type of taxonomy (default 0)\n"
-            << "    0 -- k-nearest neighbors (KNN)\n"
-            << "    1 -- support vector machine with equal length (SVM_EL)\n"
-            << "    2 -- support vector machine with equal size (SVM_ES)\n"
-            << "    3 -- support vector machine with k-means clustering (SVM_KM)\n"
-            << "  -k num_neighbors : set number of neighbors in kNN (default 1)\n"
-            << "  -c num_categories : set number of categories for Venn predictor (default 4)\n"
+            << "  -t redopt_type : set type of reduced optimization (default 0)\n"
+            << "    0 -- exact (EXACT)\n"
+            << "    1 -- approximate (APPROX)\n"
+            << "    2 -- binary (BINARY)\n"
+            << "  -k kernel_type : set type of kernel function (default 2)\n"
+            << "    0 -- linear: u'*v\n"
+            << "    1 -- polynomial: (gamma*u'*v + coef0)^degree\n"
+            << "    2 -- radial basis function: exp(-gamma*|u-v|^2)\n"
+            << "    3 -- sigmoid: tanh(gamma*u'*v + coef0)\n"
+            << "    4 -- precomputed kernel (kernel values in training_set_file)\n"
+            << "  -d degree : set degree in kernel function (default 1)\n"
+            << "  -g gamma : set gamma in kernel function (default 1)\n"
+            << "  -r coef0 : set coef0 in kernel function (default 0)\n"
             << "  -s model_file_name : save model\n"
             << "  -l model_file_name : load model\n"
-            << "  -b probability estimates : whether to output probability estimates for all labels, 0 or 1 (default 0)\n"
-            << "  -p : prefix of options to set parameters for SVM\n"
-            << "    -ps svm_type : set type of SVM (default 0)\n"
-            << "      0 -- C-SVC    (multi-class classification)\n"
-            << "      1 -- nu-SVC   (multi-class classification)\n"
-            << "    -pt kernel_type : set type of kernel function (default 2)\n"
-            << "      0 -- linear: u'*v\n"
-            << "      1 -- polynomial: (gamma*u'*v + coef0)^degree\n"
-            << "      2 -- radial basis function: exp(-gamma*|u-v|^2)\n"
-            << "      3 -- sigmoid: tanh(gamma*u'*v + coef0)\n"
-            << "      4 -- precomputed kernel (kernel values in training_set_file)\n"
-            << "    -pd degree : set degree in kernel function (default 3)\n"
-            << "    -pg gamma : set gamma in kernel function (default 1/num_features)\n"
-            << "    -pr coef0 : set coef0 in kernel function (default 0)\n"
-            << "    -pc cost : set the parameter C of C-SVC (default 1)\n"
-            << "    -pn nu : set the parameter nu of nu-SVC (default 0.5)\n"
-            << "    -pm cachesize : set cache memory size in MB (default 100)\n"
-            << "    -pe epsilon : set tolerance of termination criterion (default 0.001)\n"
-            << "    -ph shrinking : whether to use the shrinking heuristics, 0 or 1 (default 1)\n"
-            << "    -pwi weights : set the parameter C of class i to weight*C, for C-SVC (default 1)\n"
-            << "    -pq : quiet mode (no outputs)\n";
+            << "  -b beta : set beta (default 1e-4)\n"
+            << "  -c delta : set delta (default 1e-4)\n"
+            << "  -m cachesize : set cache memory size in MB (default 100)\n"
+            << "  -e epsilon : set tolerance of termination criterion (default 1e-3)\n"
+            << "  -p epsilon0 : set tolerance of termination criterion (default 1-1e-6)\n"
+            << "  -q : quiet mode (no outputs)\n";
   exit(EXIT_FAILURE);
 }
 
@@ -136,13 +125,13 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
   int i;
   param.redopt_type = EXACT;
   param.kernel_type = RBF;
-  // param.save_model = 0;
-  // param.load_model = 0;
+  param.save_model = 0;
+  param.load_model = 0;
   param.beta = 1e-4;
-  param.cache_size = 4096;
+  param.cache_size = 100;
   param.degree = 1;
   param.gamma = 1;
-  param.coef0 = 1;
+  param.coef0 = 0;
   param.epsilon = 1e-3;
   param.epsilon0 = (1-1e-6);
   param.delta = 1e-4;
@@ -158,26 +147,26 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
         param.redopt_type = std::atoi(argv[i]);
         break;
       }
-      // case 's': {
-      //   ++i;
-      //   param.save_model = 1;
-      //   std::strcpy(model_file_name, argv[i]);
-      //   break;
-      // }
-      // case 'l': {
-      //   ++i;
-      //   param.load_model = 1;
-      //   std::strcpy(model_file_name, argv[i]);
-      //   break;
-      // }
-      case 'b': {
+      case 'k': {
         ++i;
-        param.beta = std::atof(argv[i]);
+        param.kernel_type = std::atoi(argv[i]);
         break;
       }
       case 's': {
         ++i;
-        param.kernel_type = std::atoi(argv[i]);
+        param.save_model = 1;
+        std::strcpy(model_file_name, argv[i]);
+        break;
+      }
+      case 'l': {
+        ++i;
+        param.load_model = 1;
+        std::strcpy(model_file_name, argv[i]);
+        break;
+      }
+      case 'b': {
+        ++i;
+        param.beta = std::atof(argv[i]);
         break;
       }
       case 'd': {
@@ -195,7 +184,7 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
         param.coef0 = std::atof(argv[i]);
         break;
       }
-      case 'n': {
+      case 'c': {
         ++i;
         param.delta = std::atof(argv[i]);
         break;

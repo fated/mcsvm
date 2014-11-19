@@ -1188,17 +1188,29 @@ double PredictMCSVM(const struct MCSVMModel *model, const struct Node *x) {
   return model->labels[best_y];
 }
 
-int SaveMCSVMModel(std::ofstream &model_file, const struct MCSVMModel *model) {
+int SaveMCSVMModel(const char *file_name, const struct MCSVMModel *model) {
 
 }
 
-MCSVMModel *LoadMCSVMModel(std::ifstream &model_file) {
+MCSVMModel *LoadMCSVMModel(const char *file_name) {
 
 }
 
-void FreeMCSVMModel(struct MCSVMModel **model) {
+void FreeMCSVMModel(struct MCSVMModel *model) {
 
 }
+
+// int SaveMCSVMModel(std::ofstream &model_file, const struct MCSVMModel *model) {
+
+// }
+
+// MCSVMModel *LoadMCSVMModel(std::ifstream &model_file) {
+
+// }
+
+// void FreeMCSVMModel(struct MCSVMModel **model) {
+
+// }
 
 void FreeMCSVMParam(struct MCSVMParameter *param) {
 
