@@ -7,7 +7,6 @@
 #include <cstdarg>
 
 typedef double Qfloat;
-typedef signed char schar;
 
 static void PrintCout(const char *s) {
   std::cout << s;
@@ -200,6 +199,15 @@ class QMatrix {
   virtual ~QMatrix() {}
 };
 
+static const char *kKernelTypeNameTable[] = {
+  "linear: u'*v (0)",
+  "polynomial: (gamma*u'*v + coef0)^degree (1)",
+  "radial basis function: exp(-gamma*|u-v|^2) (2)",
+  "sigmoid: tanh(gamma*u'*v + coef0) (3)",
+  "precomputed kernel (kernel values in training_set_file) (4)",
+  NULL
+};
+
 class Kernel : public QMatrix {
  public:
   Kernel(int l, Node *const *x, const MCSVMParameter &param);
@@ -222,35 +230,41 @@ class Kernel : public QMatrix {
   double *x_square_;
 
   // SVMParameter
-  const int kernel_type;
-  const int degree;
-  const double gamma;
-  const double coef0;
+  const int kernel_type_;
+  const int degree_;
+  const double gamma_;
+  const double coef0_;
 
   static double Dot(const Node *px, const Node *py);
   double KernelLinear(int i, int j) const {
     return Dot(x_[i], x_[j]);
   }
   double KernelPoly(int i, int j) const {
-    return std::pow(gamma*Dot(x_[i], x_[j])+coef0, degree);
+    return std::pow(gamma_*Dot(x_[i], x_[j])+coef0_, degree_);
   }
   double KernelRBF(int i, int j) const {
-    return exp(-gamma*(x_square_[i]+x_square_[j]-2*Dot(x_[i], x_[j])));
+    return exp(-gamma_*(x_square_[i]+x_square_[j]-2*Dot(x_[i], x_[j])));
   }
   double KernelSigmoid(int i, int j) const {
-    return tanh(gamma*Dot(x_[i], x_[j])+coef0);
+    return tanh(gamma_*Dot(x_[i], x_[j])+coef0_);
   }
   double KernelPrecomputed(int i, int j) const {
     return x_[i][static_cast<int>(x_[j][0].value)].value;
   }
+  void KernelText() {
+    Info("Kernel : %s \n( degree = %d, gamma = %.10f, coef0 = %.10f )\n",
+      kKernelTypeNameTable[kernel_type_], degree_, gamma_, coef0_);
+
+    return;
+  }
 };
 
 Kernel::Kernel(int l, Node *const *x, const MCSVMParameter &param)
-    :kernel_type(param.kernel_type),
-     degree(param.degree),
-     gamma(param.gamma),
-     coef0(param.coef0) {
-  switch (kernel_type) {
+    :kernel_type_(param.kernel_type),
+     degree_(param.degree),
+     gamma_(param.gamma),
+     coef0_(param.coef0) {
+  switch (kernel_type_) {
     case LINEAR: {
       kernel_function = &Kernel::KernelLinear;
       break;
@@ -279,7 +293,7 @@ Kernel::Kernel(int l, Node *const *x, const MCSVMParameter &param)
 
   clone(x_, x, l);
 
-  if (kernel_type == RBF) {
+  if (kernel_type_ == RBF) {
     x_square_ = new double[l];
     for (int i = 0; i < l; ++i) {
       x_square_[i] = Dot(x_[i], x_[i]);
@@ -287,6 +301,8 @@ Kernel::Kernel(int l, Node *const *x, const MCSVMParameter &param)
   } else {
     x_square_ = NULL;
   }
+
+  KernelText();
 }
 
 Kernel::~Kernel() {
@@ -369,6 +385,13 @@ double Kernel::KernelFunction(const Node *x, const Node *y, const MCSVMParameter
 
 // ReducedOptimization start
 
+static const char *kRedOptTypeNameTable[] = {
+  "exact",
+  "approximate",
+  "binary",
+  NULL
+};
+
 class RedOpt {
  public:
   RedOpt(int num_classes, const MCSVMParameter &param);
@@ -397,6 +420,11 @@ class RedOpt {
   }
   int RedOptFunction() {
     return (this->*redopt_function)();
+  }
+  void RedOptText() {
+    Info("Reduced optimization algorithm : %s\n", kRedOptTypeNameTable[redopt_type_]);
+
+    return;
   }
 
  private:
@@ -449,6 +477,8 @@ RedOpt::RedOpt(int num_classes, const MCSVMParameter &param)
   }
   b_ = new double[num_classes_];
   vector_d_ = new Node[num_classes_];
+
+  RedOptText();
 }
 
 RedOpt::~RedOpt() {
@@ -766,7 +796,7 @@ Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_cla
      y_(y),
      beta_(param->beta) {
 
-  Info("\nOptimizer (SPOC)  (version 1.0)\n");
+  Info("\nOptimizer (SPOC) ... start\n");
   Info("Initializing ... start\n");
 
   Info("Requested margin (beta) %e\n", beta_);
@@ -1147,6 +1177,8 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
   }
 
   // train MSCVM model
+  Info("\nCrammer and Singer's MultiClass SVM Train\n");
+  Info("%d examples,  %d classes\n", num_ex, num_classes);
   Spoc s(prob, param, alter_labels, num_classes);
   Spoc::SolutionInfo *si = s.Solve();
 
