@@ -1218,7 +1218,7 @@ int SaveMCSVMModel(const char *file_name, const struct MCSVMModel *model) {
     return (-1);
   }
 
-  model_file << "mcsvm_model\n";
+  // model_file << "mcsvm_model\n";
   model_file << "redopt_type " << kRedOptTypeTable[param.redopt_type] << '\n';
   model_file << "kernel_type " << kKernelTypeTable[param.kernel_type] << '\n';
 
@@ -1288,7 +1288,180 @@ int SaveMCSVMModel(const char *file_name, const struct MCSVMModel *model) {
 }
 
 MCSVMModel *LoadMCSVMModel(const char *file_name) {
+  std::ifstream model_file(file_name);
+  if (!model_file.is_open()) {
+    std::cerr << "Unable to open model file: " << file_name << std::endl;
+    exit(EXIT_FAILURE);
+  }
 
+  MCSVMModel *model = new MCSVMModel;
+  MCSVMParameter &param = model->param;
+  model->sv_indices = NULL;
+  model->labels = NULL;
+  model->votes_weight = NULL;
+  model->num_svs = NULL;
+  model->svs = NULL;
+  model->tau = NULL;
+
+  char cmd[80];
+  while (1) {
+    model_file >> cmd;
+
+    if (std::strcmp(cmd, "redopt_type") == 0) {
+      model_file >> cmd;
+      int i;
+      for (i = 0; kRedOptTypeTable[i]; ++i) {
+        if (std::strcmp(kRedOptTypeTable[i], cmd) == 0) {
+          param.redopt_type = i;
+          break;
+        }
+      }
+      if (kRedOptTypeTable[i] == NULL) {
+        std::cerr << "Unknown reduced optimization type.\n" << std::endl;
+        model_file.close();
+        return NULL;
+      }
+    } else
+    if (std::strcmp(cmd, "kernel_type") == 0) {
+      model_file >> cmd;
+      int i;
+      for (i = 0; kKernelTypeTable[i]; ++i) {
+        if (std::strcmp(kKernelTypeTable[i], cmd) == 0) {
+          param.kernel_type = i;
+          break;
+        }
+      }
+      if (kKernelTypeTable[i] == NULL) {
+        std::cerr << "Unknown kernel function.\n" << std::endl;
+        model_file.close();
+        return NULL;
+      }
+    } else
+    if (std::strcmp(cmd, "degree") == 0) {
+      model_file >> param.degree;
+    } else
+    if (std::strcmp(cmd, "gamma") == 0) {
+      model_file >> param.gamma;
+    } else
+    if (std::strcmp(cmd, "coef0") == 0) {
+      model_file >> param.coef0;
+    } else
+    if (std::strcmp(cmd, "num_examples") == 0) {
+      model_file >> model->num_ex;
+    } else
+    if (std::strcmp(cmd, "num_classes") == 0) {
+      model_file >> model->num_classes;
+    } else
+    if (std::strcmp(cmd, "total_SV") == 0) {
+      model_file >> model->total_sv;
+    } else
+    if (std::strcmp(cmd, "labels") == 0) {
+      int n = model->num_classes;
+      model->labels = new int[n];
+      for (int i = 0; i < n; ++i) {
+        model_file >> model->labels[i];
+      }
+    } else
+    if (std::strcmp(cmd, "num_SVs") == 0) {
+      int n = model->num_classes;
+      model->num_svs = new int[n];
+      for (int i = 0; i < n; ++i) {
+        model_file >> model->num_svs[i];
+      }
+    } else
+    if (std::strcmp(cmd, "SV_indices") == 0) {
+      int n = model->total_sv;
+      model->sv_indices = new int[n];
+      for (int i = 0; i < n; ++i) {
+        model_file >> model->sv_indices[i];
+      }
+    } else
+    if (std::strcmp(cmd, "SVs") == 0) {
+      std::size_t n = static_cast<unsigned long>(model->num_classes);
+      int total_sv = model->total_sv;
+      std::string line;
+
+      if (model_file.peek() == '\n')
+        model_file.get();
+
+      model->tau = new double*[n];
+      for (int i = 0; i < n; ++i) {
+        model->tau[i] = new double[total_sv];
+      }
+      model->svs = new Node*[total_sv];
+      for (int i = 0; i < total_sv; ++i) {
+        std::vector<std::string> tokens;
+        std::size_t prev = 0, pos;
+
+        std::getline(model_file, line);
+        while ((pos = line.find_first_of(" \t\n", prev)) != std::string::npos) {
+          if (pos > prev)
+            tokens.push_back(line.substr(prev, pos-prev));
+          prev = pos + 1;
+        }
+        if (prev < line.length())
+          tokens.push_back(line.substr(prev, std::string::npos));
+
+        for (std::size_t j = 0; j < n; ++j) {
+          try
+          {
+            std::size_t end;
+            model->tau[j][i] = std::stod(tokens[j], &end);
+            if (end != tokens[j].length()) {
+              throw std::invalid_argument("incomplete convention");
+            }
+          }
+          catch(std::exception& e)
+          {
+            std::cerr << "Error: " << e.what() << " in SV " << (i+1) << std::endl;
+            FreeMCSVMModel(model);
+            std::vector<std::string>(tokens).swap(tokens);
+            model_file.close();
+            return NULL;
+          }  // TODO try not to use exception
+        }
+
+        std::size_t elements = tokens.size() - n + 1;
+        model->svs[i] = new Node[elements];
+        prev = 0;
+        for (std::size_t j = 0; j < elements-1; ++j) {
+          pos = tokens[j+n].find_first_of(':');
+          try
+          {
+            std::size_t end;
+
+            model->svs[i][j].index = std::stoi(tokens[j+n].substr(prev, pos-prev), &end);
+            if (end != (tokens[j+n].substr(prev, pos-prev)).length()) {
+              throw std::invalid_argument("incomplete convention");
+            }
+            model->svs[i][j].value = std::stod(tokens[j+n].substr(pos+1), &end);
+            if (end != (tokens[j+n].substr(pos+1)).length()) {
+              throw std::invalid_argument("incomplete convention");
+            }
+          }
+          catch(std::exception& e)
+          {
+            std::cerr << "Error: " << e.what() << " in SV " << (i+1) << std::endl;
+            FreeMCSVMModel(model);
+            std::vector<std::string>(tokens).swap(tokens);
+            model_file.close();
+            return NULL;
+          }
+        }
+        model->svs[i][elements-1].index = -1;
+        model->svs[i][elements-1].value = 0;
+      }
+      break;
+    } else {
+      std::cerr << "Unknown text in mcsvm_model file: " << cmd << std::endl;
+      FreeMCSVMModel(model);
+      model_file.close();
+      return NULL;
+    }
+  }
+  model_file.close();
+
+  return model;
 }
 
 void FreeMCSVMModel(struct MCSVMModel *model) {
