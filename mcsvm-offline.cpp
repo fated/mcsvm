@@ -48,13 +48,6 @@ int main(int argc, char *argv[]) {
     model = TrainMCSVM(train, &param);
   }
 
-  printf("Total support patterns %d\n\n", model->total_sv);
-  printf("\t\tclass\tsupport patterns per class\n");
-  printf("\t\t-----\t--------------------------\n");
-  for (int i = 0; i < model->num_classes; ++i) {
-    printf("\t\t  %d\t    %d\n", i, model->num_svs[i]);
-  }
-
   if (param.save_model == 1) {
     if (SaveMCSVMModel(model_file_name, model) != 0) {
       std::cerr << "Unable to save model file" << std::endl;
@@ -123,18 +116,9 @@ void ExitWithHelp() {
 
 void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_file_name, char *output_file_name, char *model_file_name) {
   int i;
-  param.redopt_type = EXACT;
-  param.kernel_type = RBF;
   param.save_model = 0;
   param.load_model = 0;
-  param.beta = 1e-4;
-  param.cache_size = 100;
-  param.degree = 1;
-  param.gamma = 1;
-  param.coef0 = 0;
-  param.epsilon = 1e-3;
-  param.epsilon0 = (1-1e-6);
-  param.delta = 1e-4;
+  InitMCSVMParam(&param);
   SetPrintCout();
 
   for (i = 1; i < argc; ++i) {
