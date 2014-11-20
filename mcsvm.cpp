@@ -45,10 +45,12 @@ int CompareNodes(const void *n1, const void *n2) {
 }
 
 int CompareInt(const void *n1, const void *n2) {
-  if ( *(int*)n1 <  *(int*)n2 ) return -1;
-  if ( *(int*)n1 == *(int*)n2 ) return 0;
-  if ( *(int*)n1 >  *(int*)n2 ) return 1;
-  return 0;
+  if (*(int*)n1 < *(int*)n2)
+    return (-1);
+  else if (*(int*)n1 > *(int*)n2)
+    return (1);
+  else
+    return (0);
 }
 
 //
@@ -283,7 +285,7 @@ Kernel::Kernel(int l, Node *const *x, const MCSVMParameter &param)
       x_square_[i] = Dot(x_[i], x_[i]);
     }
   } else {
-    x_square_ = 0;
+    x_square_ = NULL;
   }
 }
 
@@ -371,23 +373,24 @@ class RedOpt {
  public:
   RedOpt(int num_classes, const MCSVMParameter &param);
   virtual ~RedOpt();
+
   void set_a(double a) {
     a_ = a;
   }
   double get_a() {
     return a_;
   }
-  void set_y(double y) {
-    y_ = static_cast<int>(y);
+  void set_y(int y) {
+    y_ = y;
   }
   int get_y() {
     return y_;
   }
-  void set_b(double b, int r) {
-    b_[r] = b;
+  void set_b(double b, int i) {
+    b_[i] = b;
   }
-  double get_b(int r) {
-    return b_[r];
+  double get_b(int i) {
+    return b_[i];
   }
   void set_alpha(double *alpha) {
     alpha_ = alpha;
@@ -464,20 +467,20 @@ int RedOpt::RedOptExact() {
   int r1;
 
   // pick only problematic labels
-  for (r = 0; r < num_classes_; ++r) {
-    if (b_[r] > b_[y_]) {
-      vector_d_[mistake_k].index = r;
-      vector_d_[mistake_k].value = b_[r] / a_;
+  for (int i = 0; i < num_classes_; ++i) {
+    if (b_[i] > b_[y_]) {
+      vector_d_[mistake_k].index = i;
+      vector_d_[mistake_k].value = b_[i] / a_;
       sum_d += vector_d_[mistake_k].value;
       ++mistake_k;
     } else {  // for other labels, alpha=0
-      alpha_[r] = 0;
+      alpha_[i] = 0;
     }
   }
 
   /* if no mistake labels return */
   if (mistake_k == 0) {
-    return 0;
+    return (0);
   }
   /* add correct label to list (up to constant one) */
   vector_d_[mistake_k].index = y_;
@@ -486,7 +489,7 @@ int RedOpt::RedOptExact() {
   /* if there are only two bad labels, solve for it */
   if (mistake_k == 1) {
     Two(vector_d_[0].value, vector_d_[1].value, vector_d_[0].index, vector_d_[1].index);
-    return 2;
+    return (2);
   }
 
   /* finish calculations */
@@ -511,9 +514,7 @@ int RedOpt::RedOptExact() {
       alpha_[vector_d_[r].index] = sum_d - vector_d_[r].value;
     }
     ++alpha_[y_];
-  }
-  /* theta > min vector_d.value */
-  else {
+  } else {  /* theta > min vector_d.value */
     theta = - phi0 / (--r);
     theta += vector_d_[--r].value;
     /* update tau[r] with nu[r]=theta */
@@ -524,30 +525,27 @@ int RedOpt::RedOptExact() {
     for ( ; r1 < mistake_k; ++r1) {
       alpha_[vector_d_[r1].index] = 0;
     }
-    alpha_[y_]++;
+    ++alpha_[y_];
   }
 
   return (mistake_k);
 }
 
 int RedOpt::RedOptApprox() {
-
   double old_theta = DBL_MAX;  /* threshold */
   double theta = DBL_MAX;      /* threshold */
-  double temp;
   int mistake_k =0; /* no. of labels with score greater than the correct label */
-  int r;
 
   /* pick only problematic labels */
-  for (r = 0; r < num_classes_; ++r) {
-    if (b_[r] > b_[y_]) {
-      vector_d_[mistake_k].index = r;
-      vector_d_[mistake_k].value = b_[r] / a_;
+  for (int i = 0; i < num_classes_; ++i) {
+    if (b_[i] > b_[y_]) {
+      vector_d_[mistake_k].index = i;
+      vector_d_[mistake_k].value = b_[i] / a_;
       ++mistake_k;
     }
     /* for other labels, alpha=0 */
     else {
-      alpha_[r] = 0;
+      alpha_[i] = 0;
     }
   }
 
@@ -571,9 +569,10 @@ int RedOpt::RedOptApprox() {
   ++mistake_k;
 
   /* initialize theta to be min D_r */
-  for (r = 0; r < mistake_k; ++r) {
-    if (vector_d_[r].value < theta)
-      theta = vector_d_[r].value;
+  for (int i = 0; i < mistake_k; ++i) {
+    if (vector_d_[i].value < theta) {
+      theta = vector_d_[i].value;
+    }
   }
 
   /* loop until convergence of theta */
@@ -582,27 +581,27 @@ int RedOpt::RedOptApprox() {
 
     /* calculate new value of theta */
     theta = -1;
-    for (r = 0; r < mistake_k; ++r) {
-      if (old_theta > vector_d_[r].value) {
+    for (int i = 0; i < mistake_k; ++i) {
+      if (old_theta > vector_d_[i].value) {
         theta += old_theta;
       } else {
-        theta += vector_d_[r].value;
+        theta += vector_d_[i].value;
       }
     }
     theta /= mistake_k;
 
-    if (fabs((old_theta-theta)/theta) < delta_) {
+    if (std::fabs((old_theta-theta)/theta) < delta_) {
       break;
     }
   }
 
   /* update alpha using threshold */
-  for (r = 0; r < mistake_k; ++r) {
-    temp = theta - vector_d_[r].value;
+  for (int i = 0; i < mistake_k; ++i) {
+    double temp = theta - vector_d_[i].value;
     if (temp < 0) {
-      alpha_[vector_d_[r].index] = temp;
+      alpha_[vector_d_[i].index] = temp;
     } else {
-      alpha_[vector_d_[r].index] = 0;
+      alpha_[vector_d_[i].index] = 0;
     }
   }
   ++alpha_[y_];
@@ -622,7 +621,8 @@ int RedOpt::RedOptAnalyticBinary() {
     Two(vector_d_[y0].value, vector_d_[y1].value, y0, y1);
     return (2);
   } else {
-    alpha_[0] = alpha_[1] = 0;
+    alpha_[0] = 0;
+    alpha_[1] = 0;
     return (0);
   }
 }
@@ -653,7 +653,7 @@ int RedOpt::GetMarginError(const double beta) {
 class SPOC_Q : public Kernel {
  public:
   SPOC_Q(const Problem &prob, const MCSVMParameter &param) : Kernel(prob.num_ex, prob.x, param) {
-    cache_ = new Cache(prob.num_ex, static_cast<long int>(param.cache_size*(1<<20)));
+    cache_ = new Cache(prob.num_ex, static_cast<long>(param.cache_size*(1<<20)));
     QD_ = new double[prob.num_ex];
     for (int i = 0; i < prob.num_ex; ++i)
       QD_[i] = (this->*kernel_function)(i, i);
@@ -697,51 +697,21 @@ class Spoc {
  public:
   Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_classes);
   virtual ~Spoc();
-  void Solve(double epsilon);
-  double get_max_psi() {
-    return max_psi_;
-  }
-  double get_beta() {
-    return beta_;
-  }
-  int get_num_support_pattern() {
-    return num_support_pattern_;
-  }
-  int *get_support_pattern_list() {
-    int *support_pattern_list;
-    clone(support_pattern_list, support_pattern_list_, num_ex_);
-    return support_pattern_list;
-  }
-  double **get_tau() {
+
+  struct SolutionInfo {
+    int total_sv;
+    int *num_svs;
+    int *sv_indices;
     double **tau;
-    tau = new double*[num_ex_];
-    clone(*tau, *tau_, num_ex_ * num_classes_);
-    for (int i = 1; i < num_ex_; ++i) {
-      tau[i] = tau[i-1] + num_classes_;
-    }
-    return tau;
-  }
-  void PrintEpsilon(double epsilon) {
-    Info("%11.5e   %7ld   %10.3e   %7.2f%%      %7.2f%%\n",
-      epsilon, num_support_pattern_, max_psi_/beta_, CalcTrainError(beta_), CalcTrainError(0));
+  };
 
-    return;
-  }
-  double NextEpsilon(double epsilon_cur, double epsilon) {
-    double e = epsilon_cur / std::log10(iteration_);
-    iteration_ += 2;
-
-    return (std::max(e, epsilon));
-  }
-  int CountNumSVs();
+  Spoc::SolutionInfo *Solve();
 
  protected:
-  RedOpt *red_opt_;
-  void ChooseNextPattern(int *pattern_list, int num_patterns);
-  void UpdateMatrix(double *kernel_next_p);
-  double CalcTrainError(double beta);
 
  private:
+  const double epsilon_;
+  const double epsilon0_;
   int iteration_;
   int num_ex_;
   int num_classes_;
@@ -754,19 +724,43 @@ class Spoc {
   int *zero_pattern_list_;
   int **matrix_eye_;
   double max_psi_;
+  double beta_;
   double *row_matrix_f_next_p_;
   double *vector_a_;
   double *vector_b_;
-  double beta_;
   double *delta_tau_;
   double *old_tau_;
   double **matrix_f_;
   double **tau_;
   SPOC_Q *spoc_Q_;
+  RedOpt *red_opt_;
+
+  void CalcEpsilon(double epsilon);
+  void ChooseNextPattern(int *pattern_list, int num_patterns);
+  void UpdateMatrix(double *kernel_next_p);
+  double CalcTrainError(double beta);
+  int CountNumSVs();
+
+  void PrintEpsilon(double epsilon) {
+    Info("%11.5e   %7ld   %10.3e   %7.2f%%      %7.2f%%\n",
+      epsilon, num_support_pattern_, max_psi_/beta_, CalcTrainError(beta_), CalcTrainError(0));
+
+    return;
+  }
+
+  double NextEpsilon(double epsilon_cur, double epsilon) {
+    double e = epsilon_cur / std::log10(iteration_);
+    iteration_ += 2;
+
+    return (std::max(e, epsilon));
+  }
+
 };
 
 Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_classes)
-    :iteration_(12),
+    :epsilon_(param->epsilon),
+     epsilon0_(param->epsilon0),
+     iteration_(12),
      num_ex_(prob->num_ex),
      num_classes_(num_classes),
      y_(y),
@@ -788,14 +782,16 @@ Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_cla
   // matrix_f
   matrix_f_ = new double*[num_ex_];
   *matrix_f_ = new double[num_ex_ * num_classes_];
-  for (int i = 1; i < num_ex_; ++i)
+  for (int i = 1; i < num_ex_; ++i) {
     matrix_f_[i] = matrix_f_[i-1] + num_classes_;
+  }
 
   // matrix_eye
   matrix_eye_ = new int*[num_classes_];
   *matrix_eye_ = new int[num_classes_ * num_classes_];
-  for (int i = 1; i < num_classes_; ++i)
+  for (int i = 1; i < num_classes_; ++i) {
     matrix_eye_[i] = matrix_eye_[i-1] + num_classes_;
+  }
 
   // delta_tau
   delta_tau_ = new double[num_classes_];
@@ -826,31 +822,31 @@ Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_cla
   vector_a_ = spoc_Q_->get_QD();
 
   // matrix_eye
-  for (int r = 0; r < num_classes_; ++r) {
-    for (int s = 0; s < num_classes_; ++s) {
-      if (r != s) {
-        matrix_eye_[r][s] = 0;
+  for (int i = 0; i < num_classes_; ++i) {
+    for (int j = 0; j < num_classes_; ++j) {
+      if (i != j) {
+        matrix_eye_[i][j] = 0;
       } else {
-        matrix_eye_[r][s] = 1;
+        matrix_eye_[i][j] = 1;
       }
     }
   }
 
   // matrix_f
   for (int i = 0; i < num_ex_; ++i) {
-    for (int r = 0; r < num_classes_; ++r) {
-      if (y_[i] != r) {
-        matrix_f_[i][r] = 0;
+    for (int j = 0; j < num_classes_; ++j) {
+      if (y_[i] != j) {
+        matrix_f_[i][j] = 0;
       } else {
-        matrix_f_[i][r] = -beta_;
+        matrix_f_[i][j] = -beta_;
       }
     }
   }
 
   // tau
   for (int i = 0; i < num_ex_; ++i) {
-    for (int r = 0 ; r < num_classes_; ++r) {
-      tau_[i][r] = 0;
+    for (int j = 0 ; j < num_classes_; ++j) {
+      tau_[i][j] = 0;
     }
   }
 
@@ -860,10 +856,8 @@ Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_cla
   for (int i = 1; i < num_ex_; ++i) {
     zero_pattern_list_[i-1] = i;
   }
-  num_zero_pattern_ = num_ex_-1;
+  num_zero_pattern_ = num_ex_ - 1;
   ChooseNextPattern(support_pattern_list_, num_support_pattern_);
-
-  // initialize ends
 
   Info("Initializing ... done\n");
 }
@@ -902,9 +896,63 @@ Spoc::~Spoc() {
     }
     delete[] tau_;
   }
+  delete red_opt_;
+  delete spoc_Q_;
 }
 
-void Spoc::Solve(double epsilon) {
+Spoc::SolutionInfo *Spoc::Solve() {
+  double epsilon_current = epsilon0_;
+
+  Info("Epsilon decreasing from %e to %e\n", epsilon0_, epsilon_);
+  Info("\nNew Epsilon   No. SPS      Max Psi   Train Error   Margin Error\n");
+  Info("-----------   -------      -------   -----------   ------------\n");
+
+  while (max_psi_ > epsilon_ * beta_) {
+    PrintEpsilon(epsilon_current);
+    CalcEpsilon(epsilon_current);
+    epsilon_current = NextEpsilon(epsilon_current, epsilon_);
+  }
+  PrintEpsilon(epsilon_);
+
+  Info("\nNo. support pattern %d ( %d at bound )\n", num_support_pattern_, CountNumSVs());
+
+  qsort(support_pattern_list_, static_cast<size_t>(num_support_pattern_), sizeof(int), &CompareInt);
+
+  SolutionInfo *si = new SolutionInfo;
+
+  si->total_sv = num_support_pattern_;
+  si->num_svs = new int[num_classes_];
+  si->sv_indices = new int[si->total_sv];
+  si->tau = new double*[num_classes_];
+
+  for (int i = 0; i < num_classes_; ++i) {
+    si->num_svs[i] = 0;
+    si->tau[i] = new double[si->total_sv];
+  }
+
+  for (int i = 0; i < si->total_sv; ++i) {
+    si->sv_indices[i] = support_pattern_list_[i] + 1;
+  }
+
+  for (int i = 0; i < num_classes_; ++i) {
+    for (int j = 0; j < si->total_sv; ++j) {
+      si->tau[i][j] = tau_[support_pattern_list_[j]][i];
+      if (tau_[support_pattern_list_[j]][i] != 0) {
+        ++si->num_svs[i];
+      }
+    }
+  }
+
+  Info("\t\tclass\tsupport patterns per class\n");
+  Info("\t\t-----\t--------------------------\n");
+  for (int i = 0; i < num_classes_; ++i) {
+    Info("\t\t  %d\t    %d\n", i, si->num_svs[i]);
+  }
+
+  return si;
+}
+
+void Spoc::CalcEpsilon(double epsilon) {
   int supp_only =1;
   int cont = 1;
   int mistake_k;
@@ -920,20 +968,20 @@ void Spoc::Solve(double epsilon) {
 
     if (max_psi_ > epsilon * beta_) {
       red_opt_->set_a(vector_a_[next_p_]);
-      for (int r = 0; r < num_classes_; ++r) {
-        double b = matrix_f_[next_p_][r] - red_opt_->get_a() * tau_[next_p_][r];
-        red_opt_->set_b(b, r);
+      for (int i = 0; i < num_classes_; ++i) {
+        double b = matrix_f_[next_p_][i] - red_opt_->get_a() * tau_[next_p_][i];
+        red_opt_->set_b(b, i);
       }
       red_opt_->set_y(y_[next_p_]);
-      for (int r = 0; r < num_classes_; ++r) {
-        old_tau_[r] = tau_[next_p_][r];
+      for (int i = 0; i < num_classes_; ++i) {
+        old_tau_[i] = tau_[next_p_][i];
       }
       red_opt_->set_alpha(tau_[next_p_]);
 
       mistake_k = red_opt_->RedOptFunction();
 
-      for (int r = 0; r < num_classes_; ++r) {
-        delta_tau_[r] = tau_[next_p_][r] - old_tau_[r];
+      for (int i = 0; i < num_classes_; ++i) {
+        delta_tau_[i] = tau_[next_p_][i] - old_tau_[i];
       }
 
       kernel_next_p = spoc_Q_->get_Q(next_p_, num_ex_);
@@ -941,13 +989,13 @@ void Spoc::Solve(double epsilon) {
       UpdateMatrix(kernel_next_p);
 
       if (supp_only) {
-        int r;
-        for (r = 0; r < num_classes_; ++r) {
-          if (tau_[next_p_][r] != 0) {
+        int i;
+        for (i = 0; i < num_classes_; ++i) {
+          if (tau_[next_p_][i] != 0) {
             break;
           }
         }
-        if (r == num_classes_) {
+        if (i == num_classes_) {
           zero_pattern_list_[num_zero_pattern_++] = next_p_;
           support_pattern_list_[next_p_list_] = support_pattern_list_[--num_support_pattern_];
         }
@@ -969,8 +1017,8 @@ void Spoc::Solve(double epsilon) {
 
 void Spoc::ChooseNextPattern(int *pattern_list, int num_patterns) {
   // psi : KKT value of example
-  // psi1 : max_r matrix_f[i][r]
-  // psi0 : min_{r, tau[i][r]<delta[yi][r]}  matrix_f[i][r]
+  // psi1 : max_r matrix_f[i][j]
+  // psi0 : min_{j, tau[i][j]<delta[yi][j]}  matrix_f[i][j]
   int p = 0;
   double *matrix_f_ptr;
 
@@ -981,13 +1029,18 @@ void Spoc::ChooseNextPattern(int *pattern_list, int num_patterns) {
     p = pattern_list[i];
     matrix_f_ptr = matrix_f_[p];
 
-    for (int r = 0; r < num_classes_; ++r, ++matrix_f_ptr) {
-      if (*matrix_f_ptr > psi1)
+    for (int j = 0; j < num_classes_; ++j) {
+      if (*matrix_f_ptr > psi1) {
         psi1 = *matrix_f_ptr;
+      }
 
-      if (*matrix_f_ptr < psi0)
-        if (tau_[p][r] < matrix_eye_[y_[p]][r])
+      if (*matrix_f_ptr < psi0) {
+        if (tau_[p][j] < matrix_eye_[y_[p]][j]) {
           psi0 = *matrix_f_ptr;
+        }
+      }
+
+      ++matrix_f_ptr;
     }
 
     double psi = psi1 - psi0;
@@ -999,19 +1052,23 @@ void Spoc::ChooseNextPattern(int *pattern_list, int num_patterns) {
   }
   next_p_ = pattern_list[next_p_list_];
   row_matrix_f_next_p_ = matrix_f_[p];
+
+  return;
 }
 
 void Spoc::UpdateMatrix(double *kernel_next_p) {
   double *delta_tau_ptr = delta_tau_;
   double *kernel_next_p_ptr;
 
-  for (int r = 0; r < num_classes_; ++r, ++delta_tau_ptr) {
+  for (int j = 0; j < num_classes_; ++j) {
     if (*delta_tau_ptr != 0) {
       kernel_next_p_ptr = kernel_next_p;
-      for (int i = 0; i < num_ex_; ++i, ++kernel_next_p_ptr) {
-        matrix_f_[i][r] += (*delta_tau_ptr) * (*kernel_next_p_ptr);
+      for (int i = 0; i < num_ex_; ++i) {
+        matrix_f_[i][j] += (*delta_tau_ptr) * (*kernel_next_p_ptr);
+        ++kernel_next_p_ptr;
       }
     }
+    ++delta_tau_ptr;
   }
 
   return;
@@ -1058,7 +1115,7 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
   MCSVMModel *model = new MCSVMModel;
   model->param = *param;
 
-  // group training data of the same class
+  // calc labels
   int num_ex = prob->num_ex;
   int num_classes = 0;
   int *labels = NULL;
@@ -1090,70 +1147,36 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
   }
 
   // train MSCVM model
-  double epsilon_current;
   Spoc s(prob, param, alter_labels, num_classes);
-
-  Info("Epsilon decreasing from %e to %e\n", param->epsilon0, param->epsilon);
-  epsilon_current = param->epsilon0;
-
-  Info("\nNew Epsilon   No. SPS      Max Psi   Train Error   Margin Error\n");
-  Info("-----------   -------      -------   -----------   ------------\n");
-
-  while (s.get_max_psi() > param->epsilon * s.get_beta()) {
-    s.PrintEpsilon(epsilon_current);
-    s.Solve(epsilon_current);
-    epsilon_current = s.NextEpsilon(epsilon_current, param->epsilon);
-  }
-  s.PrintEpsilon(param->epsilon);
+  Spoc::SolutionInfo *si = s.Solve();
 
   // build output
-  int *support_pattern_list = s.get_support_pattern_list();
-  int num_support_pattern = s.get_num_support_pattern();
-  double **tau = s.get_tau();
-
-  Info("\nNo. support pattern %ld ( %ld at bound )\n", num_support_pattern, s.CountNumSVs());
-  qsort(support_pattern_list, static_cast<size_t>(num_support_pattern), sizeof(int), &CompareInt);
-
-  model->total_sv = num_support_pattern;
-  model->tau = new double*[num_classes];
+  model->total_sv = si->total_sv;
+  model->sv_indices = si->sv_indices;
+  model->num_svs = si->num_svs;
+  model->tau = si->tau;
   model->svs = new Node*[model->total_sv];
-  model->num_svs = new int[num_classes];
-  model->sv_indices = new int[model->total_sv];
-
-  for (int i = 0; i < num_classes; ++i) {
-    model->num_svs[i] = 0;
-    model->tau[i] = new double[model->total_sv];
-  }
 
   for (int i = 0; i < model->total_sv; ++i) {
-    model->sv_indices[i] = support_pattern_list[i] + 1;
-    model->svs[i] = prob->x[support_pattern_list[i]];
+    model->svs[i] = prob->x[model->sv_indices[i]-1];
   }
-
-  for (int i = 0; i < num_classes; ++i) {
-    for (int j = 0; j < model->total_sv; ++j) {
-      model->tau[i][j] = tau[support_pattern_list[j]][i];
-      if (tau[support_pattern_list[j]][i] != 0) {
-        ++model->num_svs[i];
-      }
-    }
-  }
-
   model->num_ex = num_ex;
   model->num_classes = num_classes;
   model->labels = labels;
   model->votes_weight = NULL;
 
+  delete[] alter_labels;
+
   return (model);
 }
 
-double PredictMCSVM(const struct MCSVMModel *model, const struct Node *x) {
+int PredictMCSVM(const struct MCSVMModel *model, const struct Node *x) {
   int num_classes = model->num_classes;
   int total_sv = model->total_sv;
 
   double max_sim_score;
-  long n_max_sim_score;
-  long best_y;
+  int n_max_sim_score;
+  int best_y;
 
   double *kernel_values = new double[total_sv];
 
@@ -1188,26 +1211,319 @@ double PredictMCSVM(const struct MCSVMModel *model, const struct Node *x) {
   return model->labels[best_y];
 }
 
-int SaveMCSVMModel(std::ofstream &model_file, const struct MCSVMModel *model) {
+static const char *kRedOptTypeTable[] = { "exact", "approx", "binary", NULL };
 
+static const char *kKernelTypeTable[] = { "linear", "polynomial", "rbf", "sigmoid", "precomputed", NULL };
+
+int SaveMCSVMModel(const char *file_name, const struct MCSVMModel *model) {
+  const MCSVMParameter &param = model->param;
+
+  std::ofstream model_file(file_name);
+  if (!model_file.is_open()) {
+    std::cerr << "Unable to open model file: " << file_name << std::endl;
+    return (-1);
+  }
+
+  model_file << "redopt_type " << kRedOptTypeTable[param.redopt_type] << '\n';
+  model_file << "kernel_type " << kKernelTypeTable[param.kernel_type] << '\n';
+
+  if (param.kernel_type == POLY) {
+    model_file << "degree " << param.degree << '\n';
+  }
+  if (param.kernel_type == POLY ||
+      param.kernel_type == RBF  ||
+      param.kernel_type == SIGMOID) {
+    model_file << "gamma " << param.gamma << '\n';
+  }
+  if (param.kernel_type == POLY ||
+      param.kernel_type == SIGMOID) {
+    model_file << "coef0 " << param.coef0 << '\n';
+  }
+
+  int num_classes = model->num_classes;
+  int total_sv = model->total_sv;
+  model_file << "num_examples " << model->num_ex << '\n';
+  model_file << "num_classes " << num_classes << '\n';
+  model_file << "total_SV " << total_sv << '\n';
+
+  if (model->labels) {
+    model_file << "labels";
+    for (int i = 0; i < num_classes; ++i)
+      model_file << ' ' << model->labels[i];
+    model_file << '\n';
+  }
+
+  if (model->num_svs) {
+    model_file << "num_SVs";
+    for (int i = 0; i < num_classes; ++i)
+      model_file << ' ' << model->num_svs[i];
+    model_file << '\n';
+  }
+
+  if (model->sv_indices) {
+    model_file << "SV_indices\n";
+    for (int i = 0; i < total_sv; ++i)
+      model_file << model->sv_indices[i] << ' ';
+    model_file << '\n';
+  }
+
+  model_file << "SVs\n";
+  const double *const *tau = model->tau;
+  const Node *const *svs = model->svs;
+
+  for (int i = 0; i < total_sv; ++i) {
+    for (int j = 0; j < num_classes; ++j)
+      model_file << std::setprecision(16) << (tau[j][i]+0.0) << ' ';  // add "+0.0" to avoid negative zero in output
+
+    const Node *p = svs[i];
+
+    if (param.kernel_type == PRECOMPUTED) {
+      model_file << "0:" << static_cast<int>(p->value) << ' ';
+    } else {
+      while (p->index != -1) {
+        model_file << p->index << ':' << std::setprecision(8) << p->value << ' ';
+        ++p;
+      }
+    }
+    model_file << '\n';
+  }
+  model_file.close();
+
+  return 0;
 }
 
-MCSVMModel *LoadMCSVMModel(std::ifstream &model_file) {
+MCSVMModel *LoadMCSVMModel(const char *file_name) {
+  std::ifstream model_file(file_name);
+  if (!model_file.is_open()) {
+    std::cerr << "Unable to open model file: " << file_name << std::endl;
+    exit(EXIT_FAILURE);
+  }
 
+  MCSVMModel *model = new MCSVMModel;
+  MCSVMParameter &param = model->param;
+  model->sv_indices = NULL;
+  model->labels = NULL;
+  model->votes_weight = NULL;
+  model->num_svs = NULL;
+  model->svs = NULL;
+  model->tau = NULL;
+
+  char cmd[80];
+  while (1) {
+    model_file >> cmd;
+
+    if (std::strcmp(cmd, "redopt_type") == 0) {
+      model_file >> cmd;
+      int i;
+      for (i = 0; kRedOptTypeTable[i]; ++i) {
+        if (std::strcmp(kRedOptTypeTable[i], cmd) == 0) {
+          param.redopt_type = i;
+          break;
+        }
+      }
+      if (kRedOptTypeTable[i] == NULL) {
+        std::cerr << "Unknown reduced optimization type.\n" << std::endl;
+        model_file.close();
+        return NULL;
+      }
+    } else
+    if (std::strcmp(cmd, "kernel_type") == 0) {
+      model_file >> cmd;
+      int i;
+      for (i = 0; kKernelTypeTable[i]; ++i) {
+        if (std::strcmp(kKernelTypeTable[i], cmd) == 0) {
+          param.kernel_type = i;
+          break;
+        }
+      }
+      if (kKernelTypeTable[i] == NULL) {
+        std::cerr << "Unknown kernel function.\n" << std::endl;
+        model_file.close();
+        return NULL;
+      }
+    } else
+    if (std::strcmp(cmd, "degree") == 0) {
+      model_file >> param.degree;
+    } else
+    if (std::strcmp(cmd, "gamma") == 0) {
+      model_file >> param.gamma;
+    } else
+    if (std::strcmp(cmd, "coef0") == 0) {
+      model_file >> param.coef0;
+    } else
+    if (std::strcmp(cmd, "num_examples") == 0) {
+      model_file >> model->num_ex;
+    } else
+    if (std::strcmp(cmd, "num_classes") == 0) {
+      model_file >> model->num_classes;
+    } else
+    if (std::strcmp(cmd, "total_SV") == 0) {
+      model_file >> model->total_sv;
+    } else
+    if (std::strcmp(cmd, "labels") == 0) {
+      int n = model->num_classes;
+      model->labels = new int[n];
+      for (int i = 0; i < n; ++i) {
+        model_file >> model->labels[i];
+      }
+    } else
+    if (std::strcmp(cmd, "num_SVs") == 0) {
+      int n = model->num_classes;
+      model->num_svs = new int[n];
+      for (int i = 0; i < n; ++i) {
+        model_file >> model->num_svs[i];
+      }
+    } else
+    if (std::strcmp(cmd, "SV_indices") == 0) {
+      int n = model->total_sv;
+      model->sv_indices = new int[n];
+      for (int i = 0; i < n; ++i) {
+        model_file >> model->sv_indices[i];
+      }
+    } else
+    if (std::strcmp(cmd, "SVs") == 0) {
+      std::size_t n = static_cast<unsigned long>(model->num_classes);
+      int total_sv = model->total_sv;
+      std::string line;
+
+      if (model_file.peek() == '\n')
+        model_file.get();
+
+      model->tau = new double*[n];
+      for (int i = 0; i < n; ++i) {
+        model->tau[i] = new double[total_sv];
+      }
+      model->svs = new Node*[total_sv];
+      for (int i = 0; i < total_sv; ++i) {
+        std::vector<std::string> tokens;
+        std::size_t prev = 0, pos;
+
+        std::getline(model_file, line);
+        while ((pos = line.find_first_of(" \t\n", prev)) != std::string::npos) {
+          if (pos > prev)
+            tokens.push_back(line.substr(prev, pos-prev));
+          prev = pos + 1;
+        }
+        if (prev < line.length())
+          tokens.push_back(line.substr(prev, std::string::npos));
+
+        for (std::size_t j = 0; j < n; ++j) {
+          try
+          {
+            std::size_t end;
+            model->tau[j][i] = std::stod(tokens[j], &end);
+            if (end != tokens[j].length()) {
+              throw std::invalid_argument("incomplete convention");
+            }
+          }
+          catch(std::exception& e)
+          {
+            std::cerr << "Error: " << e.what() << " in SV " << (i+1) << std::endl;
+            FreeMCSVMModel(model);
+            std::vector<std::string>(tokens).swap(tokens);
+            model_file.close();
+            return NULL;
+          }  // TODO try not to use exception
+        }
+
+        std::size_t elements = tokens.size() - n + 1;
+        model->svs[i] = new Node[elements];
+        prev = 0;
+        for (std::size_t j = 0; j < elements-1; ++j) {
+          pos = tokens[j+n].find_first_of(':');
+          try
+          {
+            std::size_t end;
+
+            model->svs[i][j].index = std::stoi(tokens[j+n].substr(prev, pos-prev), &end);
+            if (end != (tokens[j+n].substr(prev, pos-prev)).length()) {
+              throw std::invalid_argument("incomplete convention");
+            }
+            model->svs[i][j].value = std::stod(tokens[j+n].substr(pos+1), &end);
+            if (end != (tokens[j+n].substr(pos+1)).length()) {
+              throw std::invalid_argument("incomplete convention");
+            }
+          }
+          catch(std::exception& e)
+          {
+            std::cerr << "Error: " << e.what() << " in SV " << (i+1) << std::endl;
+            FreeMCSVMModel(model);
+            std::vector<std::string>(tokens).swap(tokens);
+            model_file.close();
+            return NULL;
+          }
+        }
+        model->svs[i][elements-1].index = -1;
+        model->svs[i][elements-1].value = 0;
+      }
+      break;
+    } else {
+      std::cerr << "Unknown text in mcsvm_model file: " << cmd << std::endl;
+      FreeMCSVMModel(model);
+      model_file.close();
+      return NULL;
+    }
+  }
+  model_file.close();
+
+  return model;
 }
 
-void FreeMCSVMModel(struct MCSVMModel **model) {
+void FreeMCSVMModel(struct MCSVMModel *model) {
+  if (model->svs != NULL) {
+    delete[] model->svs;
+    model->svs = NULL;
+  }
 
+  if (model->tau != NULL) {
+    for (int i = 0; i < model->num_classes; ++i) {
+      if (model->tau[i] != NULL) {
+        delete[] model->tau[i];
+      }
+    }
+    delete[] model->tau;
+    model->tau = NULL;
+  }
+
+  if (model->votes_weight != NULL) {
+    delete[] model->votes_weight;
+    model->votes_weight = NULL;
+  }
+
+  if (model->labels != NULL) {
+    delete[] model->labels;
+    model->labels= NULL;
+  }
+
+  if (model->sv_indices != NULL) {
+    delete[] model->sv_indices;
+    model->sv_indices = NULL;
+  }
+
+  if (model->num_svs != NULL) {
+    delete[] model->num_svs;
+    model->num_svs = NULL;
+  }
+
+  if (model != NULL) {
+    delete model;
+    model = NULL;
+  }
+
+  return;
 }
 
 void FreeMCSVMParam(struct MCSVMParameter *param) {
+  // delete param;
+  // param = NULL;
 
+  return;
 }
 
 void InitMCSVMParam(struct MCSVMParameter *param) {
-
+  param->redopt_type = EXACT;
   param->beta = 1e-4;
-  param->cache_size = 4096;
+  param->cache_size = 100;
 
   param->kernel_type = RBF;
   param->degree = 1;
@@ -1217,11 +1533,44 @@ void InitMCSVMParam(struct MCSVMParameter *param) {
   param->epsilon = 1e-3;
   param->epsilon0 = 1-1e-6;
   param->delta = 1e-4;
-  param->redopt_type = EXACT;
 
   return;
 }
 
 const char *CheckMCSVMParameter(const struct MCSVMParameter *param) {
+  if (param->save_model == 1 && param->load_model == 1) {
+    return "cannot save and load model at the same time";
+  }
 
+  int redopt_type = param->redopt_type;
+  if (redopt_type != EXACT &&
+      redopt_type != APPROX &&
+      redopt_type != BINARY) {
+    return "unknown reduced optimization type";
+  }
+
+  int kernel_type = param->kernel_type;
+  if (kernel_type != LINEAR &&
+      kernel_type != POLY &&
+      kernel_type != RBF &&
+      kernel_type != SIGMOID &&
+      kernel_type != PRECOMPUTED)
+    return "unknown kernel type";
+
+  if (param->gamma < 0)
+    return "gamma < 0";
+
+  if (param->degree < 0)
+    return "degree of polynomial kernel < 0";
+
+  if (param->cache_size <= 0)
+    return "cache_size <= 0";
+
+  if (param->epsilon <= 0)
+    return "epsilon <= 0";
+
+  if (param->epsilon0 <= 0)
+    return "epsilon0 <= 0";
+
+  return NULL;
 }

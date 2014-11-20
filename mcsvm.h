@@ -9,15 +9,16 @@ enum { LINEAR, POLY, RBF, SIGMOID, PRECOMPUTED };  // kernel_type
 struct MCSVMParameter {
   int redopt_type;  // reduced optimization type
   int kernel_type;
+  int save_model;
+  int load_model;
+  int cache_size; // in Mb
   int degree;  // for poly
   double gamma;  // for poly/rbf/sigmoid
   double coef0;  // for poly/sigmoid
   double beta;
-  int cache_size; // in Mb
   double epsilon;
   double epsilon0;
   double delta;
-  // enum RedOptType redopt_type;
 };
 
 struct MCSVMModel {
@@ -34,11 +35,11 @@ struct MCSVMModel {
 };
 
 MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *param);
-double PredictMCSVM(const struct MCSVMModel *model, const struct Node *x);
+int PredictMCSVM(const struct MCSVMModel *model, const struct Node *x);
 
-int SaveMCSVMModel(std::ofstream &model_file, const struct MCSVMModel *model);
-MCSVMModel *LoadMCSVMModel(std::ifstream &model_file);
-void FreeMCSVMModel(struct MCSVMModel **model);
+int SaveMCSVMModel(const char *file_name, const struct MCSVMModel *model);
+MCSVMModel *LoadMCSVMModel(const char *file_name);
+void FreeMCSVMModel(struct MCSVMModel *model);
 
 void FreeMCSVMParam(struct MCSVMParameter *param);
 void InitMCSVMParam(struct MCSVMParameter *param);
