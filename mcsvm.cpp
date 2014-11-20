@@ -1177,7 +1177,7 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
   }
 
   // train MSCVM model
-  Info("\nCrammer and Singer's MultiClass SVM Train\n");
+  Info("\nCrammer and Singer's Multi-Class SVM Train\n");
   Info("%d examples,  %d classes\n", num_ex, num_classes);
   Spoc s(prob, param, alter_labels, num_classes);
   Spoc::SolutionInfo *si = s.Solve();
