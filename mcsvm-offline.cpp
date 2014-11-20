@@ -17,7 +17,6 @@ int main(int argc, char *argv[]) {
   struct Problem *train, *test;
   struct MCSVMModel *model;
   int num_correct = 0;
-  // double avg_lower_bound = 0, avg_upper_bound = 0, avg_brier = 0, avg_logloss = 0;
   const char *error_message;
 
   ParseCommandLine(argc, argv, train_file_name, test_file_name, output_file_name, model_file_name);

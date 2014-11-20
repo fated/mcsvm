@@ -373,6 +373,7 @@ class RedOpt {
  public:
   RedOpt(int num_classes, const MCSVMParameter &param);
   virtual ~RedOpt();
+
   void set_a(double a) {
     a_ = a;
   }
@@ -385,11 +386,11 @@ class RedOpt {
   int get_y() {
     return y_;
   }
-  void set_b(double b, int r) {
-    b_[r] = b;
+  void set_b(double b, int i) {
+    b_[i] = b;
   }
-  double get_b(int r) {
-    return b_[r];
+  double get_b(int i) {
+    return b_[i];
   }
   void set_alpha(double *alpha) {
     alpha_ = alpha;
@@ -466,20 +467,20 @@ int RedOpt::RedOptExact() {
   int r1;
 
   // pick only problematic labels
-  for (r = 0; r < num_classes_; ++r) {
-    if (b_[r] > b_[y_]) {
-      vector_d_[mistake_k].index = r;
-      vector_d_[mistake_k].value = b_[r] / a_;
+  for (int i = 0; i < num_classes_; ++i) {
+    if (b_[i] > b_[y_]) {
+      vector_d_[mistake_k].index = i;
+      vector_d_[mistake_k].value = b_[i] / a_;
       sum_d += vector_d_[mistake_k].value;
       ++mistake_k;
     } else {  // for other labels, alpha=0
-      alpha_[r] = 0;
+      alpha_[i] = 0;
     }
   }
 
   /* if no mistake labels return */
   if (mistake_k == 0) {
-    return 0;
+    return (0);
   }
   /* add correct label to list (up to constant one) */
   vector_d_[mistake_k].index = y_;
@@ -488,7 +489,7 @@ int RedOpt::RedOptExact() {
   /* if there are only two bad labels, solve for it */
   if (mistake_k == 1) {
     Two(vector_d_[0].value, vector_d_[1].value, vector_d_[0].index, vector_d_[1].index);
-    return 2;
+    return (2);
   }
 
   /* finish calculations */
@@ -513,9 +514,7 @@ int RedOpt::RedOptExact() {
       alpha_[vector_d_[r].index] = sum_d - vector_d_[r].value;
     }
     ++alpha_[y_];
-  }
-  /* theta > min vector_d.value */
-  else {
+  } else {  /* theta > min vector_d.value */
     theta = - phi0 / (--r);
     theta += vector_d_[--r].value;
     /* update tau[r] with nu[r]=theta */
@@ -526,30 +525,27 @@ int RedOpt::RedOptExact() {
     for ( ; r1 < mistake_k; ++r1) {
       alpha_[vector_d_[r1].index] = 0;
     }
-    alpha_[y_]++;
+    ++alpha_[y_];
   }
 
   return (mistake_k);
 }
 
 int RedOpt::RedOptApprox() {
-
   double old_theta = DBL_MAX;  /* threshold */
   double theta = DBL_MAX;      /* threshold */
-  double temp;
   int mistake_k =0; /* no. of labels with score greater than the correct label */
-  int r;
 
   /* pick only problematic labels */
-  for (r = 0; r < num_classes_; ++r) {
-    if (b_[r] > b_[y_]) {
-      vector_d_[mistake_k].index = r;
-      vector_d_[mistake_k].value = b_[r] / a_;
+  for (int i = 0; i < num_classes_; ++i) {
+    if (b_[i] > b_[y_]) {
+      vector_d_[mistake_k].index = i;
+      vector_d_[mistake_k].value = b_[i] / a_;
       ++mistake_k;
     }
     /* for other labels, alpha=0 */
     else {
-      alpha_[r] = 0;
+      alpha_[i] = 0;
     }
   }
 
@@ -573,9 +569,10 @@ int RedOpt::RedOptApprox() {
   ++mistake_k;
 
   /* initialize theta to be min D_r */
-  for (r = 0; r < mistake_k; ++r) {
-    if (vector_d_[r].value < theta)
-      theta = vector_d_[r].value;
+  for (int i = 0; i < mistake_k; ++i) {
+    if (vector_d_[i].value < theta) {
+      theta = vector_d_[i].value;
+    }
   }
 
   /* loop until convergence of theta */
@@ -584,27 +581,27 @@ int RedOpt::RedOptApprox() {
 
     /* calculate new value of theta */
     theta = -1;
-    for (r = 0; r < mistake_k; ++r) {
-      if (old_theta > vector_d_[r].value) {
+    for (int i = 0; i < mistake_k; ++i) {
+      if (old_theta > vector_d_[i].value) {
         theta += old_theta;
       } else {
-        theta += vector_d_[r].value;
+        theta += vector_d_[i].value;
       }
     }
     theta /= mistake_k;
 
-    if (fabs((old_theta-theta)/theta) < delta_) {
+    if (std::fabs((old_theta-theta)/theta) < delta_) {
       break;
     }
   }
 
   /* update alpha using threshold */
-  for (r = 0; r < mistake_k; ++r) {
-    temp = theta - vector_d_[r].value;
+  for (int i = 0; i < mistake_k; ++i) {
+    double temp = theta - vector_d_[i].value;
     if (temp < 0) {
-      alpha_[vector_d_[r].index] = temp;
+      alpha_[vector_d_[i].index] = temp;
     } else {
-      alpha_[vector_d_[r].index] = 0;
+      alpha_[vector_d_[i].index] = 0;
     }
   }
   ++alpha_[y_];
@@ -624,7 +621,8 @@ int RedOpt::RedOptAnalyticBinary() {
     Two(vector_d_[y0].value, vector_d_[y1].value, y0, y1);
     return (2);
   } else {
-    alpha_[0] = alpha_[1] = 0;
+    alpha_[0] = 0;
+    alpha_[1] = 0;
     return (0);
   }
 }
@@ -655,7 +653,7 @@ int RedOpt::GetMarginError(const double beta) {
 class SPOC_Q : public Kernel {
  public:
   SPOC_Q(const Problem &prob, const MCSVMParameter &param) : Kernel(prob.num_ex, prob.x, param) {
-    cache_ = new Cache(prob.num_ex, static_cast<long int>(param.cache_size*(1<<20)));
+    cache_ = new Cache(prob.num_ex, static_cast<long>(param.cache_size*(1<<20)));
     QD_ = new double[prob.num_ex];
     for (int i = 0; i < prob.num_ex; ++i)
       QD_[i] = (this->*kernel_function)(i, i);
@@ -784,14 +782,16 @@ Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_cla
   // matrix_f
   matrix_f_ = new double*[num_ex_];
   *matrix_f_ = new double[num_ex_ * num_classes_];
-  for (int i = 1; i < num_ex_; ++i)
+  for (int i = 1; i < num_ex_; ++i) {
     matrix_f_[i] = matrix_f_[i-1] + num_classes_;
+  }
 
   // matrix_eye
   matrix_eye_ = new int*[num_classes_];
   *matrix_eye_ = new int[num_classes_ * num_classes_];
-  for (int i = 1; i < num_classes_; ++i)
+  for (int i = 1; i < num_classes_; ++i) {
     matrix_eye_[i] = matrix_eye_[i-1] + num_classes_;
+  }
 
   // delta_tau
   delta_tau_ = new double[num_classes_];
@@ -822,31 +822,31 @@ Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_cla
   vector_a_ = spoc_Q_->get_QD();
 
   // matrix_eye
-  for (int r = 0; r < num_classes_; ++r) {
-    for (int s = 0; s < num_classes_; ++s) {
-      if (r != s) {
-        matrix_eye_[r][s] = 0;
+  for (int i = 0; i < num_classes_; ++i) {
+    for (int j = 0; j < num_classes_; ++j) {
+      if (i != j) {
+        matrix_eye_[i][j] = 0;
       } else {
-        matrix_eye_[r][s] = 1;
+        matrix_eye_[i][j] = 1;
       }
     }
   }
 
   // matrix_f
   for (int i = 0; i < num_ex_; ++i) {
-    for (int r = 0; r < num_classes_; ++r) {
-      if (y_[i] != r) {
-        matrix_f_[i][r] = 0;
+    for (int j = 0; j < num_classes_; ++j) {
+      if (y_[i] != j) {
+        matrix_f_[i][j] = 0;
       } else {
-        matrix_f_[i][r] = -beta_;
+        matrix_f_[i][j] = -beta_;
       }
     }
   }
 
   // tau
   for (int i = 0; i < num_ex_; ++i) {
-    for (int r = 0 ; r < num_classes_; ++r) {
-      tau_[i][r] = 0;
+    for (int j = 0 ; j < num_classes_; ++j) {
+      tau_[i][j] = 0;
     }
   }
 
@@ -859,7 +859,6 @@ Spoc::Spoc(const Problem *prob, const MCSVMParameter *param, int *y, int num_cla
   num_zero_pattern_ = num_ex_ - 1;
   ChooseNextPattern(support_pattern_list_, num_support_pattern_);
 
-  // initialize ends
   Info("Initializing ... done\n");
 }
 
@@ -969,20 +968,20 @@ void Spoc::CalcEpsilon(double epsilon) {
 
     if (max_psi_ > epsilon * beta_) {
       red_opt_->set_a(vector_a_[next_p_]);
-      for (int r = 0; r < num_classes_; ++r) {
-        double b = matrix_f_[next_p_][r] - red_opt_->get_a() * tau_[next_p_][r];
-        red_opt_->set_b(b, r);
+      for (int i = 0; i < num_classes_; ++i) {
+        double b = matrix_f_[next_p_][i] - red_opt_->get_a() * tau_[next_p_][i];
+        red_opt_->set_b(b, i);
       }
       red_opt_->set_y(y_[next_p_]);
-      for (int r = 0; r < num_classes_; ++r) {
-        old_tau_[r] = tau_[next_p_][r];
+      for (int i = 0; i < num_classes_; ++i) {
+        old_tau_[i] = tau_[next_p_][i];
       }
       red_opt_->set_alpha(tau_[next_p_]);
 
       mistake_k = red_opt_->RedOptFunction();
 
-      for (int r = 0; r < num_classes_; ++r) {
-        delta_tau_[r] = tau_[next_p_][r] - old_tau_[r];
+      for (int i = 0; i < num_classes_; ++i) {
+        delta_tau_[i] = tau_[next_p_][i] - old_tau_[i];
       }
 
       kernel_next_p = spoc_Q_->get_Q(next_p_, num_ex_);
@@ -990,13 +989,13 @@ void Spoc::CalcEpsilon(double epsilon) {
       UpdateMatrix(kernel_next_p);
 
       if (supp_only) {
-        int r;
-        for (r = 0; r < num_classes_; ++r) {
-          if (tau_[next_p_][r] != 0) {
+        int i;
+        for (i = 0; i < num_classes_; ++i) {
+          if (tau_[next_p_][i] != 0) {
             break;
           }
         }
-        if (r == num_classes_) {
+        if (i == num_classes_) {
           zero_pattern_list_[num_zero_pattern_++] = next_p_;
           support_pattern_list_[next_p_list_] = support_pattern_list_[--num_support_pattern_];
         }
@@ -1018,8 +1017,8 @@ void Spoc::CalcEpsilon(double epsilon) {
 
 void Spoc::ChooseNextPattern(int *pattern_list, int num_patterns) {
   // psi : KKT value of example
-  // psi1 : max_r matrix_f[i][r]
-  // psi0 : min_{r, tau[i][r]<delta[yi][r]}  matrix_f[i][r]
+  // psi1 : max_r matrix_f[i][j]
+  // psi0 : min_{j, tau[i][j]<delta[yi][j]}  matrix_f[i][j]
   int p = 0;
   double *matrix_f_ptr;
 
@@ -1030,13 +1029,18 @@ void Spoc::ChooseNextPattern(int *pattern_list, int num_patterns) {
     p = pattern_list[i];
     matrix_f_ptr = matrix_f_[p];
 
-    for (int r = 0; r < num_classes_; ++r, ++matrix_f_ptr) {
-      if (*matrix_f_ptr > psi1)
+    for (int j = 0; j < num_classes_; ++j) {
+      if (*matrix_f_ptr > psi1) {
         psi1 = *matrix_f_ptr;
+      }
 
-      if (*matrix_f_ptr < psi0)
-        if (tau_[p][r] < matrix_eye_[y_[p]][r])
+      if (*matrix_f_ptr < psi0) {
+        if (tau_[p][j] < matrix_eye_[y_[p]][j]) {
           psi0 = *matrix_f_ptr;
+        }
+      }
+
+      ++matrix_f_ptr;
     }
 
     double psi = psi1 - psi0;
@@ -1056,13 +1060,15 @@ void Spoc::UpdateMatrix(double *kernel_next_p) {
   double *delta_tau_ptr = delta_tau_;
   double *kernel_next_p_ptr;
 
-  for (int r = 0; r < num_classes_; ++r, ++delta_tau_ptr) {
+  for (int j = 0; j < num_classes_; ++j) {
     if (*delta_tau_ptr != 0) {
       kernel_next_p_ptr = kernel_next_p;
-      for (int i = 0; i < num_ex_; ++i, ++kernel_next_p_ptr) {
-        matrix_f_[i][r] += (*delta_tau_ptr) * (*kernel_next_p_ptr);
+      for (int i = 0; i < num_ex_; ++i) {
+        matrix_f_[i][j] += (*delta_tau_ptr) * (*kernel_next_p_ptr);
+        ++kernel_next_p_ptr;
       }
     }
+    ++delta_tau_ptr;
   }
 
   return;
@@ -1218,7 +1224,6 @@ int SaveMCSVMModel(const char *file_name, const struct MCSVMModel *model) {
     return (-1);
   }
 
-  // model_file << "mcsvm_model\n";
   model_file << "redopt_type " << kRedOptTypeTable[param.redopt_type] << '\n';
   model_file << "kernel_type " << kKernelTypeTable[param.kernel_type] << '\n';
 
@@ -1507,18 +1512,6 @@ void FreeMCSVMModel(struct MCSVMModel *model) {
 
   return;
 }
-
-// int SaveMCSVMModel(std::ofstream &model_file, const struct MCSVMModel *model) {
-
-// }
-
-// MCSVMModel *LoadMCSVMModel(std::ifstream &model_file) {
-
-// }
-
-// void FreeMCSVMModel(struct MCSVMModel **model) {
-
-// }
 
 void FreeMCSVMParam(struct MCSVMParameter *param) {
   // delete param;
