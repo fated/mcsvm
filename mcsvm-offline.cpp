@@ -73,12 +73,14 @@ int main(int argc, char *argv[]) {
   }
 
   for (int i = 0; i < test->num_ex; ++i) {
-    int predicted_label = PredictMCSVM(model, test->x[i]);
+    int num_max_sim_score;
+    int predicted_label = PredictMCSVM(model, test->x[i], &num_max_sim_score);
 
     output_file << test->y[i] << ' ' << predicted_label << '\n';
-    if (predicted_label != test->y[i]) {
+    if ((predicted_label != test->y[i]) || (num_max_sim_score > 1)) {
       ++errors->num_errors;
     }
+
     int j;
     for (j = 0; j < model->num_classes; ++j) {
       if (model->labels[j] == predicted_label) {
@@ -166,11 +168,11 @@ void ExitWithHelp() {
             << "  -r coef0 : set coef0 in kernel function (default 0)\n"
             << "  -s model_file_name : save model\n"
             << "  -l model_file_name : load model\n"
-            << "  -b beta : set beta (default 1e-4)\n"
-            << "  -c delta : set delta (default 1e-4)\n"
+            << "  -b beta : set margin (default 1e-4)\n"
+            << "  -w delta : set approximation tolerance for approximate method (default 1e-4)\n"
             << "  -m cachesize : set cache memory size in MB (default 100)\n"
             << "  -e epsilon : set tolerance of termination criterion (default 1e-3)\n"
-            << "  -p epsilon0 : set tolerance of termination criterion (default 1-1e-6)\n"
+            << "  -z epsilon0 : set initialize margin (default 1-1e-6)\n"
             << "  -q : quiet mode (no outputs)\n";
   exit(EXIT_FAILURE);
 }
@@ -229,7 +231,7 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
         param.coef0 = std::atof(argv[i]);
         break;
       }
-      case 'c': {
+      case 'w': {
         ++i;
         param.delta = std::atof(argv[i]);
         break;
@@ -244,7 +246,7 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
         param.epsilon = std::atof(argv[i]);
         break;
       }
-      case 'p': {
+      case 'z': {
         ++i;
         param.epsilon0 = std::atof(argv[i]);
         break;

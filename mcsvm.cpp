@@ -973,11 +973,12 @@ Spoc::SolutionInfo *Spoc::Solve() {
     }
   }
 
-  Info("\t\tclass\tsupport patterns per class\n");
-  Info("\t\t-----\t--------------------------\n");
+  Info(" class\tsupport patterns per class\n");
+  Info(" -----\t--------------------------\n");
   for (int i = 0; i < num_classes_; ++i) {
-    Info("\t\t  %d\t    %d\n", i, si->num_svs[i]);
+    Info("   %d\t    %d\n", i, si->num_svs[i]);
   }
+  Info("\n");
 
   return si;
 }
@@ -1203,48 +1204,53 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
 }
 
 double *PredictMCSVMValues(const struct MCSVMModel *model, const struct Node *x) {
-
-}
-
-int PredictMCSVM(const struct MCSVMModel *model, const struct Node *x) {
   int num_classes = model->num_classes;
   int total_sv = model->total_sv;
 
-  double max_sim_score;
-  int n_max_sim_score;
-  int best_y;
-
+  double *sim_scores = new double[num_classes];
   double *kernel_values = new double[total_sv];
 
   for (int i = 0; i < total_sv; ++i) {
     kernel_values[i] = Kernel::KernelFunction(x, model->svs[i], model->param);
   }
 
-  n_max_sim_score =0;
-  max_sim_score = -DBL_MAX;
-  best_y = -1;
-
   for (int i = 0; i < num_classes; ++i) {
-    double sim_score = 0;
+    sim_scores[i] = 0;
     for (int j = 0; j < total_sv; ++j) {
       if (model->tau[i][j] != 0) {
-        sim_score += model->tau[i][j] * kernel_values[j];
-      }
-    }
-
-    if (sim_score > max_sim_score) {
-      max_sim_score = sim_score;
-      n_max_sim_score = 1;
-      best_y = i;
-    } else {
-      if (sim_score == max_sim_score) {
-        n_max_sim_score++;
+        sim_scores[i] += model->tau[i][j] * kernel_values[j];
       }
     }
   }
 
   delete[] kernel_values;
-  return model->labels[best_y];
+
+  return sim_scores;
+}
+
+int PredictMCSVM(const struct MCSVMModel *model, const struct Node *x, int *num_max_sim_score_ret) {
+  int num_classes = model->num_classes;
+  double max_sim_score = -DBL_MAX;
+  int predicted_label = -1;
+  int num_max_sim_score = 0;
+
+  double *sim_scores = PredictMCSVMValues(model, x);
+
+  for (int i = 0; i < num_classes; ++i) {
+    if (sim_scores[i] > max_sim_score) {
+      max_sim_score = sim_scores[i];
+      num_max_sim_score = 1;
+      predicted_label = i;
+    } else {
+      if (sim_scores[i] == max_sim_score) {
+        ++num_max_sim_score;
+      }
+    }
+  }
+  delete[] sim_scores;
+  *num_max_sim_score_ret = num_max_sim_score;
+
+  return model->labels[predicted_label];
 }
 
 static const char *kRedOptTypeTable[] = { "exact", "approx", "binary", NULL };
