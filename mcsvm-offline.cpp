@@ -103,22 +103,31 @@ int main(int argc, char *argv[]) {
 
   std::cout << "Time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count()/1000.0 << " s\n";
 
+  int *labels;
+  clone(labels, model->labels, model->num_classes);
+  size_t *index = new size_t[model->num_classes];
+  for (size_t i = 0; i < model->num_classes; ++i) {
+    index[i] = i;
+  }
+  QuickSortIndex(labels, index, 0, static_cast<size_t>(model->num_classes-1));
+  delete[] labels;
+
   std::cout << "\nError Statsitics\n";
   std::cout << " test error : " << 100.0*(errors->num_errors)/test->num_ex
-            << "%% (" << errors->num_errors
+            << "% (" << errors->num_errors
             << " / " << test->num_ex
             << ")\n";
 
   std::cout << " error statistics (correct/predicted)\n" << "     ";
 
   for (int i = 0; i < model->num_classes; ++i) {
-    std::cout << std::setw(4) << model->labels[i] << ' ';
+    std::cout << std::setw(4) << model->labels[index[i]] << ' ';
   }
   std::cout << '\n';
   for (int i = 0; i < model->num_classes; ++i) {
-    std::cout << std::setw(4) << model->labels[i] << ' ';
+    std::cout << std::setw(4) << model->labels[index[i]] << ' ';
     for (int j = 0; j < model->num_classes; ++j) {
-      std::cout << std::setw(4) << errors->error_statistics[i][j] << ' ';
+      std::cout << std::setw(4) << errors->error_statistics[index[i]][index[j]] << ' ';
     }
     std::cout << '\n';
   }
@@ -134,6 +143,7 @@ int main(int argc, char *argv[]) {
   }
   delete[] errors->error_statistics;
   delete errors;
+  delete[] index;
 
   return 0;
 }
