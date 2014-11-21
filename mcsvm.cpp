@@ -1202,6 +1202,10 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
   return (model);
 }
 
+double *PredictMCSVMValues(const struct MCSVMModel *model, const struct Node *x) {
+
+}
+
 int PredictMCSVM(const struct MCSVMModel *model, const struct Node *x) {
   int num_classes = model->num_classes;
   int total_sv = model->total_sv;

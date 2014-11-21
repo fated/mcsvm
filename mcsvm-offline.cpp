@@ -16,7 +16,8 @@ int main(int argc, char *argv[]) {
   char model_file_name[256];
   struct Problem *train, *test;
   struct MCSVMModel *model;
-  int num_correct = 0;
+  struct ErrStatistics *errors;
+  int num_correct;
   const char *error_message;
 
   ParseCommandLine(argc, argv, train_file_name, test_file_name, output_file_name, model_file_name);
@@ -61,27 +62,78 @@ int main(int argc, char *argv[]) {
   //   output_file << '\n';
   // }
 
-  for (int i = 0; i < test->num_ex; ++i) {
-    int predict_label = PredictMCSVM(model, test->x[i]);
-
-    output_file << test->y[i] << ' ' << predict_label << '\n';
-    if (predict_label == test->y[i]) {
-      ++num_correct;
+  errors = new ErrStatistics;
+  errors->num_errors = 0;
+  errors->error_statistics = new int*[model->num_classes];
+  for (int i = 0; i < model->num_classes; ++i) {
+    errors->error_statistics[i] = new int[model->num_classes];
+    for (int j = 0; j < model->num_classes; ++j) {
+      errors->error_statistics[i][j] = 0;
     }
+  }
+
+  for (int i = 0; i < test->num_ex; ++i) {
+    int predicted_label = PredictMCSVM(model, test->x[i]);
+
+    output_file << test->y[i] << ' ' << predicted_label << '\n';
+    if (predicted_label != test->y[i]) {
+      ++errors->num_errors;
+    }
+    int j;
+    for (j = 0; j < model->num_classes; ++j) {
+      if (model->labels[j] == predicted_label) {
+        break;
+      }
+    }
+    int y;
+    for (y = 0; y < model->num_classes; ++y) {
+      if (model->labels[y] == test->y[i]) {
+        break;
+      }
+    }
+    ++errors->error_statistics[y][j];
   }
 
   std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
 
+  num_correct = test->num_ex - errors->num_errors;
   std::cout << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
             << " (" << num_correct << '/' << test->num_ex << ") " << '\n';
   output_file.close();
 
   std::cout << "Time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count()/1000.0 << " s\n";
 
+  std::cout << "\nError Statsitics\n";
+  std::cout << " test error : " << 100.0*(errors->num_errors)/test->num_ex
+            << "%% (" << errors->num_errors
+            << " / " << test->num_ex
+            << ")\n";
+
+  std::cout << " error statistics (correct/predicted)\n" << "     ";
+
+  for (int i = 0; i < model->num_classes; ++i) {
+    std::cout << std::setw(4) << model->labels[i] << ' ';
+  }
+  std::cout << '\n';
+  for (int i = 0; i < model->num_classes; ++i) {
+    std::cout << std::setw(4) << model->labels[i] << ' ';
+    for (int j = 0; j < model->num_classes; ++j) {
+      std::cout << std::setw(4) << errors->error_statistics[i][j] << ' ';
+    }
+    std::cout << '\n';
+  }
+  std::cout << std::endl;
+
   FreeProblem(train);
   FreeProblem(test);
   FreeMCSVMModel(model);
   FreeMCSVMParam(&param);
+
+  for (int i = 0; i < model->num_classes; ++i) {
+    delete[] errors->error_statistics[i];
+  }
+  delete[] errors->error_statistics;
+  delete errors;
 
   return 0;
 }

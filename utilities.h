@@ -22,6 +22,11 @@ struct Problem {
   struct Node **x;
 };
 
+struct ErrStatistics {
+  int num_errors;
+  int **error_statistics;
+};
+
 template <typename T>
 T FindMostFrequent(T *array, int size) {
   std::vector<T> v(array, array+size);
