@@ -35,7 +35,8 @@ struct MCSVMModel {
 };
 
 MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *param);
-int PredictMCSVM(const struct MCSVMModel *model, const struct Node *x);
+double *PredictMCSVMValues(const struct MCSVMModel *model, const struct Node *x);
+int PredictMCSVM(const struct MCSVMModel *model, const struct Node *x, int *num_max_sim_score_ret);
 
 int SaveMCSVMModel(const char *file_name, const struct MCSVMModel *model);
 MCSVMModel *LoadMCSVMModel(const char *file_name);

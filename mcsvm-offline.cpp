@@ -16,7 +16,8 @@ int main(int argc, char *argv[]) {
   char model_file_name[256];
   struct Problem *train, *test;
   struct MCSVMModel *model;
-  int num_correct = 0;
+  struct ErrStatistics *errors;
+  int num_correct;
   const char *error_message;
 
   ParseCommandLine(argc, argv, train_file_name, test_file_name, output_file_name, model_file_name);
@@ -61,27 +62,90 @@ int main(int argc, char *argv[]) {
   //   output_file << '\n';
   // }
 
-  for (int i = 0; i < test->num_ex; ++i) {
-    int predict_label = PredictMCSVM(model, test->x[i]);
-
-    output_file << test->y[i] << ' ' << predict_label << '\n';
-    if (predict_label == test->y[i]) {
-      ++num_correct;
+  errors = new ErrStatistics;
+  errors->num_errors = 0;
+  errors->error_statistics = new int*[model->num_classes];
+  for (int i = 0; i < model->num_classes; ++i) {
+    errors->error_statistics[i] = new int[model->num_classes];
+    for (int j = 0; j < model->num_classes; ++j) {
+      errors->error_statistics[i][j] = 0;
     }
+  }
+
+  for (int i = 0; i < test->num_ex; ++i) {
+    int num_max_sim_score;
+    int predicted_label = PredictMCSVM(model, test->x[i], &num_max_sim_score);
+
+    output_file << test->y[i] << ' ' << predicted_label << '\n';
+    if ((predicted_label != test->y[i]) || (num_max_sim_score > 1)) {
+      ++errors->num_errors;
+    }
+
+    int j;
+    for (j = 0; j < model->num_classes; ++j) {
+      if (model->labels[j] == predicted_label) {
+        break;
+      }
+    }
+    int y;
+    for (y = 0; y < model->num_classes; ++y) {
+      if (model->labels[y] == test->y[i]) {
+        break;
+      }
+    }
+    ++errors->error_statistics[y][j];
   }
 
   std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
 
+  num_correct = test->num_ex - errors->num_errors;
   std::cout << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
             << " (" << num_correct << '/' << test->num_ex << ") " << '\n';
   output_file.close();
 
   std::cout << "Time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count()/1000.0 << " s\n";
 
+  int *labels;
+  clone(labels, model->labels, model->num_classes);
+  size_t *index = new size_t[model->num_classes];
+  for (size_t i = 0; i < model->num_classes; ++i) {
+    index[i] = i;
+  }
+  QuickSortIndex(labels, index, 0, static_cast<size_t>(model->num_classes-1));
+  delete[] labels;
+
+  std::cout << "\nError Statsitics\n";
+  std::cout << " test error : " << 100.0*(errors->num_errors)/test->num_ex
+            << "% (" << errors->num_errors
+            << " / " << test->num_ex
+            << ")\n";
+
+  std::cout << " error statistics (correct/predicted)\n" << "     ";
+
+  for (int i = 0; i < model->num_classes; ++i) {
+    std::cout << std::setw(4) << model->labels[index[i]] << ' ';
+  }
+  std::cout << '\n';
+  for (int i = 0; i < model->num_classes; ++i) {
+    std::cout << std::setw(4) << model->labels[index[i]] << ' ';
+    for (int j = 0; j < model->num_classes; ++j) {
+      std::cout << std::setw(4) << errors->error_statistics[index[i]][index[j]] << ' ';
+    }
+    std::cout << '\n';
+  }
+  std::cout << std::endl;
+
   FreeProblem(train);
   FreeProblem(test);
   FreeMCSVMModel(model);
   FreeMCSVMParam(&param);
+
+  for (int i = 0; i < model->num_classes; ++i) {
+    delete[] errors->error_statistics[i];
+  }
+  delete[] errors->error_statistics;
+  delete errors;
+  delete[] index;
 
   return 0;
 }
@@ -104,11 +168,11 @@ void ExitWithHelp() {
             << "  -r coef0 : set coef0 in kernel function (default 0)\n"
             << "  -s model_file_name : save model\n"
             << "  -l model_file_name : load model\n"
-            << "  -b beta : set beta (default 1e-4)\n"
-            << "  -c delta : set delta (default 1e-4)\n"
+            << "  -b beta : set margin (default 1e-4)\n"
+            << "  -w delta : set approximation tolerance for approximate method (default 1e-4)\n"
             << "  -m cachesize : set cache memory size in MB (default 100)\n"
             << "  -e epsilon : set tolerance of termination criterion (default 1e-3)\n"
-            << "  -p epsilon0 : set tolerance of termination criterion (default 1-1e-6)\n"
+            << "  -z epsilon0 : set initialize margin (default 1-1e-6)\n"
             << "  -q : quiet mode (no outputs)\n";
   exit(EXIT_FAILURE);
 }
@@ -167,7 +231,7 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
         param.coef0 = std::atof(argv[i]);
         break;
       }
-      case 'c': {
+      case 'w': {
         ++i;
         param.delta = std::atof(argv[i]);
         break;
@@ -182,7 +246,7 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
         param.epsilon = std::atof(argv[i]);
         break;
       }
-      case 'p': {
+      case 'z': {
         ++i;
         param.epsilon0 = std::atof(argv[i]);
         break;
