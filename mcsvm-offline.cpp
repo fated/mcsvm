@@ -18,6 +18,7 @@ int main(int argc, char *argv[]) {
   struct MCSVMModel *model;
   struct ErrStatistics *errors;
   int num_correct;
+  double avg_brier = 0, avg_logloss = 0, avg_prob = 0;
   const char *error_message;
 
   ParseCommandLine(argc, argv, train_file_name, test_file_name, output_file_name, model_file_name);
@@ -82,6 +83,21 @@ int main(int argc, char *argv[]) {
       }
       output_file << '\n';
 
+      double logloss = 0, brier = 0, prob = 0;
+      for (int j = 0; j < model->num_classes; ++j) {
+        if (model->labels[j] == test->y[i]) {
+          brier += (1-prob_estimates[j])*(1-prob_estimates[j]);
+          double tmp = std::fmax(std::fmin(prob_estimates[j], 1-kEpsilon), kEpsilon);
+          logloss = - std::log(tmp);
+          prob = prob_estimates[j];
+        } else {
+          brier += prob_estimates[j]*prob_estimates[j];
+        }
+      }
+      avg_brier += brier;
+      avg_logloss += logloss;
+      avg_prob += prob;
+
       delete[] prob_estimates;
     } else {
       predicted_label = PredictMCSVM(model, test->x[i], &num_max_sim_score);
@@ -106,14 +122,22 @@ int main(int argc, char *argv[]) {
     }
     ++errors->error_statistics[y][j];
   }
+  avg_brier /= test->num_ex;
+  avg_logloss /= test->num_ex;
+  avg_prob /= test->num_ex;
 
   std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
 
   num_correct = test->num_ex - errors->num_errors;
-  std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(2)
+  std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(4)
             << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
             << " (" << num_correct << '/' << test->num_ex << ") " << '\n';
   output_file.close();
+
+  if (param.probability == 1) {
+    std::cout << "Probabilities: " << 100*avg_prob << "%\n"
+              << "Brier Score: " << avg_brier << ' ' << "Logarithmic Loss: " << avg_logloss << '\n';
+  }
 
   std::cout << "Time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count()/1000.0 << " s\n";
 
