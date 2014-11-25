@@ -31,6 +31,10 @@ int main(int argc, char *argv[]) {
   train = ReadProblem(train_file_name);
   test = ReadProblem(test_file_name);
 
+  if (param.gamma == 0) {
+    param.gamma = 1.0 / train->max_index;
+  }
+
   std::ofstream output_file(output_file_name);
   if (!output_file.is_open()) {
     std::cerr << "Unable to open output file: " << output_file_name << std::endl;
@@ -54,14 +58,6 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // if (param.probability == 1) {
-  //   output_file << "                      ";
-  //   for (int i = 0; i < model->num_classes; ++i) {
-  //     output_file << model->labels[i] << "        ";
-  //   }
-  //   output_file << '\n';
-  // }
-
   errors = new ErrStatistics;
   errors->num_errors = 0;
   errors->error_statistics = new int*[model->num_classes];
@@ -73,10 +69,25 @@ int main(int argc, char *argv[]) {
   }
 
   for (int i = 0; i < test->num_ex; ++i) {
-    int num_max_sim_score;
-    int predicted_label = PredictMCSVM(model, test->x[i], &num_max_sim_score);
+    int num_max_sim_score = 0;
+    int predicted_label = 0;
 
-    output_file << test->y[i] << ' ' << predicted_label << '\n';
+    if (param.probability == 1) {
+      double *prob_estimates = new double[model->num_classes];
+      predicted_label = PredictProbMCSVM(model, test->x[i], prob_estimates);
+
+      output_file << static_cast<int>(test->y[i]) << ' ' << predicted_label;
+      for (int j = 0; j < model->num_classes; ++j) {
+        output_file << ' ' << std::setiosflags(std::ios::fixed) << std::setprecision(2) << 100.0*prob_estimates[j] << '%';
+      }
+      output_file << '\n';
+
+      delete[] prob_estimates;
+    } else {
+      predicted_label = PredictMCSVM(model, test->x[i], &num_max_sim_score);
+      output_file << test->y[i] << ' ' << predicted_label << '\n';
+    }
+
     if ((predicted_label != test->y[i]) || (num_max_sim_score > 1)) {
       ++errors->num_errors;
     }
@@ -99,7 +110,8 @@ int main(int argc, char *argv[]) {
   std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
 
   num_correct = test->num_ex - errors->num_errors;
-  std::cout << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
+  std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(2)
+            << "Accuracy: " << 100.0*num_correct/test->num_ex << '%'
             << " (" << num_correct << '/' << test->num_ex << ") " << '\n';
   output_file.close();
 
@@ -164,7 +176,7 @@ void ExitWithHelp() {
             << "    3 -- sigmoid: tanh(gamma*u'*v + coef0)\n"
             << "    4 -- precomputed kernel (kernel values in training_set_file)\n"
             << "  -d degree : set degree in kernel function (default 1)\n"
-            << "  -g gamma : set gamma in kernel function (default 1)\n"
+            << "  -g gamma : set gamma in kernel function (default 1.0/num_features)\n"
             << "  -r coef0 : set coef0 in kernel function (default 0)\n"
             << "  -s model_file_name : save model\n"
             << "  -l model_file_name : load model\n"
@@ -181,6 +193,7 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
   int i;
   param.save_model = 0;
   param.load_model = 0;
+  param.probability = 0;
   InitMCSVMParam(&param);
   SetPrintCout();
 
@@ -249,6 +262,11 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
       case 'z': {
         ++i;
         param.epsilon0 = std::atof(argv[i]);
+        break;
+      }
+      case 'p': {
+        ++i;
+        param.probability = std::atoi(argv[i]);
         break;
       }
       case 'q': {
