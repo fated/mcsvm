@@ -155,7 +155,7 @@ void ExitWithHelp() {
             << "  -m cachesize : set cache memory size in MB (default 100)\n"
             << "  -e epsilon : set tolerance of termination criterion (default 1e-3)\n"
             << "  -z epsilon0 : set initialize margin (default 1-1e-6)\n"
-            << "  -q : quiet mode (no outputs)\n";
+            << "  -q : turn off quiet mode (no outputs)\n";
   exit(EXIT_FAILURE);
 }
 

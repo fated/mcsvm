@@ -6,6 +6,7 @@ This is a new implementation of Crammer and Singer's Multi-Class Support Vector 
 
 * [Installation and Data Format](#installation-and-data-format)
 * ["mcsvm-offline" Usage](#mcsvm-offline-usage)
+* ["mcsvm-cv" Usage](#mcsvm-cv-usage)
 * [Tips on Practical Use](#tips-on-practical-use)
 * [Examples](#examples)
 * [Bibliography](#bibliography)
@@ -45,20 +46,48 @@ options:
     3 -- sigmoid: tanh(gamma*u'*v + coef0)
     4 -- precomputed kernel (kernel values in training_set_file)
   -d degree : set degree in kernel function (default 1)
-  -g gamma : set gamma in kernel function (default 1)
+  -g gamma : set gamma in kernel function (default 1.0/num_features)
   -r coef0 : set coef0 in kernel function (default 0)
   -s model_file_name : save model
   -l model_file_name : load model
-  -b beta : set beta (default 1e-4)
-  -c delta : set delta (default 1e-4)
+  -b beta : set margin (default 1e-4)
+  -w delta : set approximation tolerance for approximate method (default 1e-4)
   -m cachesize : set cache memory size in MB (default 100)
   -e epsilon : set tolerance of termination criterion (default 1e-3)
-  -p epsilon0 : set tolerance of termination criterion (default 1-1e-6)
+  -z epsilon0 : set initialize margin (default 1-1e-6)
   -q : quiet mode (no outputs)
 ```
 `train_file` is the data you want to train with.  
 `test_file` is the data you want to predict.  
 `mcsvm-offline` will produce outputs in the `output_file` by default.
+
+## "mcsvm-cv" Usage[↩](#table-of-contents)
+```
+Usage: mcsvm-cv [options] data_file [output_file]
+options:
+  -t redopt_type : set type of reduced optimization (default 0)
+    0 -- exact (EXACT)
+    1 -- approximate (APPROX)
+    2 -- binary (BINARY)
+  -k kernel_type : set type of kernel function (default 2)
+    0 -- linear: u'*v
+    1 -- polynomial: (gamma*u'*v + coef0)^degree
+    2 -- radial basis function: exp(-gamma*|u-v|^2)
+    3 -- sigmoid: tanh(gamma*u'*v + coef0)
+    4 -- precomputed kernel (kernel values in training_set_file)
+  -d degree : set degree in kernel function (default 1)
+  -g gamma : set gamma in kernel function (default 1.0/num_features)
+  -r coef0 : set coef0 in kernel function (default 0)
+  -v num_folds : set number of folders in cross validation (default 5)
+  -b beta : set margin (default 1e-4)
+  -w delta : set approximation tolerance for approximate method (default 1e-4)
+  -m cachesize : set cache memory size in MB (default 100)
+  -e epsilon : set tolerance of termination criterion (default 1e-3)
+  -z epsilon0 : set initialize margin (default 1-1e-6)
+  -q : turn off quiet mode (no outputs)
+```
+`data_file` is the data you want to do cross validation on.  
+`mcsvm-cv` will produce outputs in the `output_file` by default.
 
 ## Tips on Practical Use[↩](#table-of-contents)
 * Scale your data. For example, scale each attribute to [0,1] or [-1,+1].
@@ -77,6 +106,12 @@ Train a Crammer and Singer's multi-class classifier with default settings on `tr
 ```
 
 Train a Crammer and Singer's multi-class classifier with approximate reduced optimization on `train_file`. Then conduct this classifier to `test_file` and output the results to the default output file, also the model will be saved to file `model_file`.
+
+```
+> mcsvm-cv -v 10 data_file
+```
+
+Do a 10-folds cross validation of Crammer and Singer's multi-class classifiers on `data_file`. And output the results to the default output file.
 
 ## Bibliography[↩](#table-of-contents)
 
