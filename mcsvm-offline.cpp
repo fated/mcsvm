@@ -2,7 +2,6 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
-#include <cmath>
 
 void ExitWithHelp();
 void ParseCommandLine(int argc, char *argv[], char *train_file_name, char *test_file_name, char *output_file_name, char *model_file_name);
@@ -122,9 +121,6 @@ int main(int argc, char *argv[]) {
     }
     ++errors->error_statistics[y][j];
   }
-  avg_brier /= test->num_ex;
-  avg_logloss /= test->num_ex;
-  avg_prob /= test->num_ex;
 
   std::chrono::time_point<std::chrono::steady_clock> end_time = std::chrono::high_resolution_clock::now();
 
@@ -135,6 +131,9 @@ int main(int argc, char *argv[]) {
   output_file.close();
 
   if (param.probability == 1) {
+    avg_brier /= test->num_ex;
+    avg_logloss /= test->num_ex;
+    avg_prob /= test->num_ex;
     std::cout << "Probabilities: " << 100*avg_prob << "%\n"
               << "Brier Score: " << avg_brier << ' ' << "Logarithmic Loss: " << avg_logloss << '\n';
   }
@@ -217,6 +216,7 @@ void ParseCommandLine(int argc, char **argv, char *train_file_name, char *test_f
   int i;
   param.save_model = 0;
   param.load_model = 0;
+  param.num_folds = 5;
   param.probability = 0;
   InitMCSVMParam(&param);
   SetPrintCout();

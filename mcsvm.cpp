@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <cfloat>
 #include <cstdarg>
+#include <random>
 
 typedef double Qfloat;
 
@@ -1457,6 +1458,165 @@ int PredictProbMCSVM(const MCSVMModel *model, const Node *x, double *prob_estima
   }
 }
 
+void CrossValidation(const struct Problem *prob, const struct MCSVMParameter *param, struct ErrStatistics *errors, int *predict_labels, double *probs, double *brier, double *logloss) {
+  int num_folds = param->num_folds;
+  int num_ex = prob->num_ex;
+  int num_classes = 0;
+
+  int *fold_start;
+  int *perm = new int[num_ex];
+
+  if (num_folds > num_ex) {
+    num_folds = num_ex;
+    std::cerr << "WARNING: number of folds > number of data. Will use number of folds = number of data instead (i.e., leave-one-out cross validation)" << std::endl;
+  }
+  fold_start = new int[num_folds+1];
+
+  if (num_folds < num_ex) {
+    int *start = NULL;
+    int *label = NULL;
+    int *count = NULL;
+    GroupClasses(prob, &num_classes, &label, &start, &count, perm);
+
+    int *fold_count = new int[num_folds];
+    int *index = new int[num_ex];
+
+    for (int i = 0; i < num_ex; ++i) {
+      index[i] = perm[i];
+    }
+    std::random_device rd;
+    std::mt19937 g(rd());
+    for (int i = 0; i < num_classes; ++i) {
+      std::shuffle(index+start[i], index+start[i]+count[i], g);
+    }
+
+    for (int i = 0; i < num_folds; ++i) {
+      fold_count[i] = 0;
+      for (int c = 0; c < num_classes; ++c) {
+        fold_count[i] += (i+1)*count[c]/num_folds - i*count[c]/num_folds;
+      }
+    }
+
+    fold_start[0] = 0;
+    for (int i = 1; i <= num_folds; ++i) {
+      fold_start[i] = fold_start[i-1] + fold_count[i-1];
+    }
+    for (int c = 0; c < num_classes; ++c) {
+      for (int i = 0; i < num_folds; ++i) {
+        int begin = start[c] + i*count[c]/num_folds;
+        int end = start[c] + (i+1)*count[c]/num_folds;
+        for (int j = begin; j < end; ++j) {
+          perm[fold_start[i]] = index[j];
+          fold_start[i]++;
+        }
+      }
+    }
+    fold_start[0] = 0;
+    for (int i = 1; i <= num_folds; ++i) {
+      fold_start[i] = fold_start[i-1] + fold_count[i-1];
+    }
+    delete[] start;
+    delete[] label;
+    delete[] count;
+    delete[] index;
+    delete[] fold_count;
+
+  } else {
+
+    for (int i = 0; i < num_ex; ++i) {
+      perm[i] = i;
+    }
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(perm, perm+num_ex, g);
+    fold_start[0] = 0;
+    for (int i = 1; i <= num_folds; ++i) {
+      fold_start[i] = fold_start[i-1] + (i+1)*num_ex/num_folds - i*num_ex/num_folds;
+    }
+  }
+
+  errors->error_statistics = new int*[num_classes];
+  for (int i = 0; i < num_classes; ++i) {
+    errors->error_statistics[i] = new int[num_classes];
+    for (int j = 0; j < num_classes; ++j) {
+      errors->error_statistics[i][j] = 0;
+    }
+  }
+
+  for (int i = 0; i < num_folds; ++i) {
+    int begin = fold_start[i];
+    int end = fold_start[i+1];
+    int k = 0;
+    struct Problem subprob;
+
+    subprob.num_ex = num_ex - (end-begin);
+    subprob.x = new Node*[subprob.num_ex];
+    subprob.y = new double[subprob.num_ex];
+
+    for (int j = 0; j < begin; ++j) {
+      subprob.x[k] = prob->x[perm[j]];
+      subprob.y[k] = prob->y[perm[j]];
+      ++k;
+    }
+    for (int j = end; j < num_ex; ++j) {
+      subprob.x[k] = prob->x[perm[j]];
+      subprob.y[k] = prob->y[perm[j]];
+      ++k;
+    }
+
+    struct MCSVMModel *submodel = TrainMCSVM(&subprob, param);
+
+    for (int j = begin; j < end; ++j) {
+      int num_max_sim_score = 0;
+
+      if (param->probability == 1) {
+        double *prob_estimates = new double[num_classes];
+        brier[perm[j]] = 0;
+        predict_labels[perm[j]] = PredictProbMCSVM(submodel, prob->x[perm[j]], prob_estimates);
+
+        for (int k = 0; k < num_classes; ++k) {
+          if (submodel->labels[k] == prob->y[perm[j]]) {
+            brier[perm[j]] += (1-prob_estimates[k])*(1-prob_estimates[k]);
+            double tmp = std::fmax(std::fmin(prob_estimates[k], 1-kEpsilon), kEpsilon);
+            logloss[perm[j]] = - std::log(tmp);
+            probs[perm[j]] = prob_estimates[k];
+          } else {
+            brier[perm[j]] += prob_estimates[k]*prob_estimates[k];
+          }
+        }
+        delete[] prob_estimates;
+      } else {
+        predict_labels[perm[j]] = PredictMCSVM(submodel, prob->x[perm[j]], &num_max_sim_score);
+      }
+
+      if ((predict_labels[perm[j]] != prob->y[perm[j]]) || (num_max_sim_score > 1)) {
+        ++errors->num_errors;
+      }
+
+      int k;
+      for (k = 0; k < num_classes; ++k) {
+        if (submodel->labels[k] == predict_labels[perm[j]]) {
+          break;
+        }
+      }
+      int y;
+      for (y = 0; y < num_classes; ++y) {
+        if (submodel->labels[y] == prob->y[perm[j]]) {
+          break;
+        }
+      }
+      ++errors->error_statistics[y][k];
+    }
+    FreeMCSVMModel(submodel);
+    delete[] subprob.x;
+    delete[] subprob.y;
+  }
+  delete[] fold_start;
+  delete[] perm;
+
+  return;
+}
+
 static const char *kRedOptTypeTable[] = { "exact", "approx", "binary", NULL };
 
 static const char *kKernelTypeTable[] = { "linear", "polynomial", "rbf", "sigmoid", "precomputed", NULL };
@@ -1852,6 +2012,9 @@ const char *CheckMCSVMParameter(const struct MCSVMParameter *param) {
 
   if (param->degree < 0)
     return "degree of polynomial kernel < 0";
+
+  if (param->num_folds < 2)
+    return "num of folds in cross validation must >= 2";
 
   if (param->cache_size <= 0)
     return "cache_size <= 0";
