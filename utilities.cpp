@@ -34,7 +34,7 @@ Problem *ReadProblem(const char *file_name) {
 
     current_max_index = -1;
     std::getline(input_file, line);
-    while ((pos = line.find_first_of(" \t\n", prev)) != std::string::npos) {
+    while ((pos = line.find_first_of(" \t\n\r", prev)) != std::string::npos) {
       if (pos > prev) {
         tokens.push_back(line.substr(prev, pos-prev));
       }
@@ -55,7 +55,7 @@ Problem *ReadProblem(const char *file_name) {
     }
     catch(std::exception& e)
     {
-      std::cerr << "Error: " << e.what() << " in line " << (i+1) << std::endl;
+      std::cerr << "Error: " << e.what() << " in line " << (i+1) << " tokens " << tokens[0] << std::endl;
       delete[] problem->y;
       for (int j = 0; j < i; ++j) {
         delete[] problem->x[j];
@@ -86,7 +86,7 @@ Problem *ReadProblem(const char *file_name) {
       }
       catch(std::exception& e)
       {
-        std::cerr << "Error: " << e.what() << " in line " << (i+1) << std::endl;
+        std::cerr << "Error: " << e.what() << " in line " << (i+1) << " tokens " << tokens[j+1] << std::endl;
         delete[] problem->y;
         for (int j = 0; j < i+1; ++j) {
           delete[] problem->x[j];
