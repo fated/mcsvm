@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <cfloat>
 #include <cstdarg>
+#include <random>
 
 typedef double Qfloat;
 
@@ -973,11 +974,12 @@ Spoc::SolutionInfo *Spoc::Solve() {
     }
   }
 
-  Info("\t\tclass\tsupport patterns per class\n");
-  Info("\t\t-----\t--------------------------\n");
+  Info(" class\tsupport patterns per class\n");
+  Info(" -----\t--------------------------\n");
   for (int i = 0; i < num_classes_; ++i) {
-    Info("\t\t  %d\t    %d\n", i, si->num_svs[i]);
+    Info("   %d\t    %d\n", i, si->num_svs[i]);
   }
+  Info("\n");
 
   return si;
 }
@@ -1141,6 +1143,163 @@ int Spoc::CountNumSVs() {
 
 // Spoc class end
 
+// Platt's binary SVM Probablistic Output: an improvement from Lin et al.
+static void TrainSigmoid(int num_ex, const double *scores, const int *labels, double *probA, double *probB) {
+  int prior1 = 0, prior0 = 0;
+
+  for (int i = 0; i < num_ex; ++i) {
+    if (labels[i] > 0) {
+      ++prior1;
+    } else {
+      ++prior0;
+    }
+  }
+
+  int max_iteration = 100; // Maximal number of iterations
+  double min_step = 1e-10;  // Minimal step taken in line search
+  double sigma = 1e-12; // For numerically strict PD of Hessian
+  double epsilon = 1e-5;
+  double hi_target = (prior1+1.0)/(prior1+2.0);
+  double low_target = 1/(prior0+2.0);
+  double *t = new double[num_ex];
+  double fApB, p, q, h11, h22, h21, g1, g2, det, dA, dB, gd, stepsize;
+  double newA, newB, newf, d1, d2;
+  int iteration;
+
+  // Initial Point and Initial Fun Value
+  double A = 0.0, B = std::log((prior0+1.0)/(prior1+1.0));
+  double fval = 0.0;
+
+  for (int i = 0; i < num_ex; ++i) {
+    if (labels[i] > 0) {
+      t[i] = hi_target;
+    } else {
+      t[i] = low_target;
+    }
+    fApB = scores[i] * A + B;
+    if (fApB >= 0) {
+      fval += t[i] * fApB + std::log(1+std::exp(-fApB));
+    } else {
+      fval += (t[i]-1) * fApB + std::log(1+std::exp(fApB));
+    }
+  }
+  for (iteration = 0; iteration < max_iteration; ++iteration) {
+    // Update Gradient and Hessian (use H' = H + sigma I)
+    h11 = sigma; // numerically ensures strict PD
+    h22 = sigma;
+    h21 = 0.0; g1 = 0.0; g2 = 0.0;
+    for (int i = 0; i < num_ex; ++i) {
+      fApB = scores[i] * A + B;
+      if (fApB >= 0) {
+        p = std::exp(-fApB) / (1.0+std::exp(-fApB));
+        q = 1.0 / (1.0+std::exp(-fApB));
+      } else {
+        p = 1.0 / (1.0+std::exp(fApB));
+        q = std::exp(fApB) / (1.0+std::exp(fApB));
+      }
+      d2 = p * q;
+      h11 += scores[i] * scores[i] * d2;
+      h22 += d2;
+      h21 += scores[i] * d2;
+      d1 = t[i] - p;
+      g1 += scores[i] * d1;
+      g2 += d1;
+    }
+
+    // Stopping Criteria
+    if ((std::fabs(g1) < epsilon) && (std::fabs(g2) < epsilon)) {
+      break;
+    }
+
+    // Finding Newton direction: -inv(H') * g
+    det = h11 * h22 - h21 * h21;
+    dA = -(h22 * g1 - h21 * g2) / det;
+    dB = -(-h21 * g1 + h11 * g2) / det;
+    gd = g1 * dA + g2 * dB;
+
+    stepsize = 1;  // Line Search
+    while (stepsize >= min_step) {
+      newA = A + stepsize * dA;
+      newB = B + stepsize * dB;
+
+      // New function value
+      newf = 0.0;
+      for (int i = 0; i < num_ex; ++i) {
+        fApB = scores[i] * newA + newB;
+        if (fApB >= 0) {
+          newf += t[i] * fApB + std::log(1+std::exp(-fApB));
+        } else {
+          newf += (t[i]-1) * fApB + std::log(1+std::exp(fApB));
+        }
+      }
+
+      // Check sufficient decrease
+      if (newf < fval+0.0001*stepsize*gd) {
+        A = newA; B = newB; fval = newf;
+        break;
+      } else {
+        stepsize /= 2.0;
+      }
+    }
+
+    if (stepsize < min_step) {
+      Info("Line search fails in probability estimates\n");
+      break;
+    }
+  }
+
+  if (iteration >= max_iteration) {
+    Info("Reaching maximal iterations in probability estimates\n");
+  }
+
+  *probA = A;
+  *probB = B;
+  delete[] t;
+
+  return;
+}
+
+void TrainProbMCSVM(const struct Problem *prob, const struct MCSVMParameter *param, struct MCSVMModel *model) {
+  int num_ex = model->num_ex;
+  int num_classes = model->num_classes;
+  double **sim_scores = new double*[num_ex];
+  double *probA = new double[num_classes];
+  double *probB = new double[num_classes];
+
+  for (int i = 0; i < num_ex; ++i) {
+    sim_scores[i] = PredictMCSVMValues(model, prob->x[i]);
+  }
+
+  for (int i = 0; i < num_classes; ++i) {
+    int *alter_labels = new int[num_ex];
+    double *scores = new double[num_ex];
+
+    for (int j = 0; j < num_ex; ++j) {
+      if (prob->y[j] == model->labels[i]) {
+        alter_labels[j] = +1;
+      } else {
+        alter_labels[j] = -1;
+      }
+      scores[j] = sim_scores[j][i];
+    }
+
+    TrainSigmoid(num_ex, scores, alter_labels, &probA[i], &probB[i]);
+
+    delete[] alter_labels;
+    delete[] scores;
+  }
+
+  model->probA = probA;
+  model->probB = probB;
+
+  for (int i = 0; i < num_ex; ++i) {
+    delete[] sim_scores[i];
+  }
+  delete[] sim_scores;
+
+  return;
+}
+
 MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *param) {
   MCSVMModel *model = new MCSVMModel;
   model->param = *param;
@@ -1196,51 +1355,266 @@ MCSVMModel *TrainMCSVM(const struct Problem *prob, const struct MCSVMParameter *
   model->num_classes = num_classes;
   model->labels = labels;
   model->votes_weight = NULL;
+  model->probA = NULL;
+  model->probB = NULL;
+
+  if (param->probability == 1) {
+    TrainProbMCSVM(prob, param, model);
+  }
 
   delete[] alter_labels;
 
   return (model);
 }
 
-int PredictMCSVM(const struct MCSVMModel *model, const struct Node *x) {
+double *PredictMCSVMValues(const struct MCSVMModel *model, const struct Node *x) {
   int num_classes = model->num_classes;
   int total_sv = model->total_sv;
 
-  double max_sim_score;
-  int n_max_sim_score;
-  int best_y;
-
+  double *sim_scores = new double[num_classes];
   double *kernel_values = new double[total_sv];
 
   for (int i = 0; i < total_sv; ++i) {
     kernel_values[i] = Kernel::KernelFunction(x, model->svs[i], model->param);
   }
 
-  n_max_sim_score =0;
-  max_sim_score = -DBL_MAX;
-  best_y = -1;
-
   for (int i = 0; i < num_classes; ++i) {
-    double sim_score = 0;
+    sim_scores[i] = 0;
     for (int j = 0; j < total_sv; ++j) {
       if (model->tau[i][j] != 0) {
-        sim_score += model->tau[i][j] * kernel_values[j];
-      }
-    }
-
-    if (sim_score > max_sim_score) {
-      max_sim_score = sim_score;
-      n_max_sim_score = 1;
-      best_y = i;
-    } else {
-      if (sim_score == max_sim_score) {
-        n_max_sim_score++;
+        sim_scores[i] += model->tau[i][j] * kernel_values[j];
       }
     }
   }
 
   delete[] kernel_values;
-  return model->labels[best_y];
+
+  return sim_scores;
+}
+
+int PredictMCSVM(const struct MCSVMModel *model, const struct Node *x, int *num_max_sim_score_ret) {
+  int num_classes = model->num_classes;
+  double max_sim_score = -DBL_MAX;
+  int predicted_label = -1;
+  int num_max_sim_score = 0;
+
+  double *sim_scores = PredictMCSVMValues(model, x);
+
+  for (int i = 0; i < num_classes; ++i) {
+    if (sim_scores[i] > max_sim_score) {
+      max_sim_score = sim_scores[i];
+      num_max_sim_score = 1;
+      predicted_label = i;
+    } else {
+      if (sim_scores[i] == max_sim_score) {
+        ++num_max_sim_score;
+      }
+    }
+  }
+
+  delete[] sim_scores;
+  *num_max_sim_score_ret = num_max_sim_score;
+
+  return model->labels[predicted_label];
+}
+
+static double PredictSigmoid(double score, double A, double B)
+{
+  double fApB = score * A + B;
+  // 1-p used later; avoid catastrophic cancellation
+  if (fApB >= 0) {
+    return std::exp(-fApB)/(1.0+std::exp(-fApB));
+  } else {
+    return 1.0/(1+std::exp(fApB));
+  }
+}
+
+int PredictProbMCSVM(const MCSVMModel *model, const Node *x, double *prob_estimates) {
+  if (model->probA != NULL && model->probB != NULL) {
+    int num_classes = model->num_classes;
+    double *sim_scores = PredictMCSVMValues(model, x);
+
+    double min_prob = 1e-7;
+    double prob_sum = 0;
+    for (int i = 0; i < num_classes; ++i) {
+      double prob = PredictSigmoid(sim_scores[i], model->probA[i], model->probB[i]);
+      prob_estimates[i] = std::min(std::max(prob, min_prob), 1-min_prob);
+      prob_sum += prob_estimates[i];
+    }
+    for (int i = 0; i < num_classes; ++i) {
+      prob_estimates[i] /= prob_sum;
+    }
+
+    int max_prob_index = 0;
+    for (int i = 0; i < num_classes; ++i) {
+      if (prob_estimates[i] > prob_estimates[max_prob_index]) {
+        max_prob_index = i;
+      }
+    }
+    delete[] sim_scores;
+    return model->labels[max_prob_index];
+  } else {
+    return -1;
+  }
+}
+
+void CrossValidation(const struct Problem *prob, const struct MCSVMParameter *param, struct ErrStatistics *errors, int *predict_labels, double *probs, double *brier, double *logloss) {
+  int num_folds = param->num_folds;
+  int num_ex = prob->num_ex;
+  int num_classes = 0;
+
+  int *fold_start;
+  int *perm = new int[num_ex];
+
+  if (num_folds > num_ex) {
+    num_folds = num_ex;
+    std::cerr << "WARNING: number of folds > number of data. Will use number of folds = number of data instead (i.e., leave-one-out cross validation)" << std::endl;
+  }
+  fold_start = new int[num_folds+1];
+
+  if (num_folds < num_ex) {
+    int *start = NULL;
+    int *label = NULL;
+    int *count = NULL;
+    GroupClasses(prob, &num_classes, &label, &start, &count, perm);
+
+    int *fold_count = new int[num_folds];
+    int *index = new int[num_ex];
+
+    for (int i = 0; i < num_ex; ++i) {
+      index[i] = perm[i];
+    }
+    std::random_device rd;
+    std::mt19937 g(rd());
+    for (int i = 0; i < num_classes; ++i) {
+      std::shuffle(index+start[i], index+start[i]+count[i], g);
+    }
+
+    for (int i = 0; i < num_folds; ++i) {
+      fold_count[i] = 0;
+      for (int c = 0; c < num_classes; ++c) {
+        fold_count[i] += (i+1)*count[c]/num_folds - i*count[c]/num_folds;
+      }
+    }
+
+    fold_start[0] = 0;
+    for (int i = 1; i <= num_folds; ++i) {
+      fold_start[i] = fold_start[i-1] + fold_count[i-1];
+    }
+    for (int c = 0; c < num_classes; ++c) {
+      for (int i = 0; i < num_folds; ++i) {
+        int begin = start[c] + i*count[c]/num_folds;
+        int end = start[c] + (i+1)*count[c]/num_folds;
+        for (int j = begin; j < end; ++j) {
+          perm[fold_start[i]] = index[j];
+          fold_start[i]++;
+        }
+      }
+    }
+    fold_start[0] = 0;
+    for (int i = 1; i <= num_folds; ++i) {
+      fold_start[i] = fold_start[i-1] + fold_count[i-1];
+    }
+    delete[] start;
+    delete[] label;
+    delete[] count;
+    delete[] index;
+    delete[] fold_count;
+
+  } else {
+
+    for (int i = 0; i < num_ex; ++i) {
+      perm[i] = i;
+    }
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(perm, perm+num_ex, g);
+    fold_start[0] = 0;
+    for (int i = 1; i <= num_folds; ++i) {
+      fold_start[i] = fold_start[i-1] + (i+1)*num_ex/num_folds - i*num_ex/num_folds;
+    }
+  }
+
+  errors->error_statistics = new int*[num_classes];
+  for (int i = 0; i < num_classes; ++i) {
+    errors->error_statistics[i] = new int[num_classes];
+    for (int j = 0; j < num_classes; ++j) {
+      errors->error_statistics[i][j] = 0;
+    }
+  }
+
+  for (int i = 0; i < num_folds; ++i) {
+    int begin = fold_start[i];
+    int end = fold_start[i+1];
+    int k = 0;
+    struct Problem subprob;
+
+    subprob.num_ex = num_ex - (end-begin);
+    subprob.x = new Node*[subprob.num_ex];
+    subprob.y = new double[subprob.num_ex];
+
+    for (int j = 0; j < begin; ++j) {
+      subprob.x[k] = prob->x[perm[j]];
+      subprob.y[k] = prob->y[perm[j]];
+      ++k;
+    }
+    for (int j = end; j < num_ex; ++j) {
+      subprob.x[k] = prob->x[perm[j]];
+      subprob.y[k] = prob->y[perm[j]];
+      ++k;
+    }
+
+    struct MCSVMModel *submodel = TrainMCSVM(&subprob, param);
+
+    for (int j = begin; j < end; ++j) {
+      int num_max_sim_score = 0;
+
+      if (param->probability == 1) {
+        double *prob_estimates = new double[num_classes];
+        brier[perm[j]] = 0;
+        predict_labels[perm[j]] = PredictProbMCSVM(submodel, prob->x[perm[j]], prob_estimates);
+
+        for (int k = 0; k < num_classes; ++k) {
+          if (submodel->labels[k] == prob->y[perm[j]]) {
+            brier[perm[j]] += (1-prob_estimates[k])*(1-prob_estimates[k]);
+            double tmp = std::fmax(std::fmin(prob_estimates[k], 1-kEpsilon), kEpsilon);
+            logloss[perm[j]] = - std::log(tmp);
+            probs[perm[j]] = prob_estimates[k];
+          } else {
+            brier[perm[j]] += prob_estimates[k]*prob_estimates[k];
+          }
+        }
+        delete[] prob_estimates;
+      } else {
+        predict_labels[perm[j]] = PredictMCSVM(submodel, prob->x[perm[j]], &num_max_sim_score);
+      }
+
+      if ((predict_labels[perm[j]] != prob->y[perm[j]]) || (num_max_sim_score > 1)) {
+        ++errors->num_errors;
+      }
+
+      int k;
+      for (k = 0; k < num_classes; ++k) {
+        if (submodel->labels[k] == predict_labels[perm[j]]) {
+          break;
+        }
+      }
+      int y;
+      for (y = 0; y < num_classes; ++y) {
+        if (submodel->labels[y] == prob->y[perm[j]]) {
+          break;
+        }
+      }
+      ++errors->error_statistics[y][k];
+    }
+    FreeMCSVMModel(submodel);
+    delete[] subprob.x;
+    delete[] subprob.y;
+  }
+  delete[] fold_start;
+  delete[] perm;
+
+  return;
 }
 
 static const char *kRedOptTypeTable[] = { "exact", "approx", "binary", NULL };
@@ -1277,6 +1651,7 @@ int SaveMCSVMModel(const char *file_name, const struct MCSVMModel *model) {
   model_file << "num_examples " << model->num_ex << '\n';
   model_file << "num_classes " << num_classes << '\n';
   model_file << "total_SV " << total_sv << '\n';
+  model_file << "probability " << param.probability << '\n';
 
   if (model->labels) {
     model_file << "labels";
@@ -1296,6 +1671,20 @@ int SaveMCSVMModel(const char *file_name, const struct MCSVMModel *model) {
     model_file << "SV_indices\n";
     for (int i = 0; i < total_sv; ++i)
       model_file << model->sv_indices[i] << ' ';
+    model_file << '\n';
+  }
+
+  if (model->probA) {
+    model_file << "probA\n";
+    for (int i = 0; i < num_classes; ++i)
+      model_file << model->probA[i] << ' ';
+    model_file << '\n';
+  }
+
+  if (model->probB) {
+    model_file << "probB\n";
+    for (int i = 0; i < num_classes; ++i)
+      model_file << model->probB[i] << ' ';
     model_file << '\n';
   }
 
@@ -1339,6 +1728,8 @@ MCSVMModel *LoadMCSVMModel(const char *file_name) {
   model->num_svs = NULL;
   model->svs = NULL;
   model->tau = NULL;
+  model->probA = NULL;
+  model->probB = NULL;
 
   char cmd[80];
   while (1) {
@@ -1392,6 +1783,9 @@ MCSVMModel *LoadMCSVMModel(const char *file_name) {
     if (std::strcmp(cmd, "total_SV") == 0) {
       model_file >> model->total_sv;
     } else
+    if (std::strcmp(cmd, "probability") == 0) {
+      model_file >> param.probability;
+    } else
     if (std::strcmp(cmd, "labels") == 0) {
       int n = model->num_classes;
       model->labels = new int[n];
@@ -1411,6 +1805,20 @@ MCSVMModel *LoadMCSVMModel(const char *file_name) {
       model->sv_indices = new int[n];
       for (int i = 0; i < n; ++i) {
         model_file >> model->sv_indices[i];
+      }
+    } else
+    if (std::strcmp(cmd, "probA") == 0) {
+      int n = model->num_classes;
+      model->probA = new double[n];
+      for (int i = 0; i < n; ++i) {
+        model_file >> model->probA[i];
+      }
+    } else
+    if (std::strcmp(cmd, "probB") == 0) {
+      int n = model->num_classes;
+      model->probB = new double[n];
+      for (int i = 0; i < n; ++i) {
+        model_file >> model->probB[i];
       }
     } else
     if (std::strcmp(cmd, "SVs") == 0) {
@@ -1522,6 +1930,16 @@ void FreeMCSVMModel(struct MCSVMModel *model) {
     model->votes_weight = NULL;
   }
 
+  if (model->probA) {
+    delete[] model->probA;
+    model->probA = NULL;
+  }
+
+  if (model->probB) {
+    delete[] model->probB;
+    model->probB = NULL;
+  }
+
   if (model->labels != NULL) {
     delete[] model->labels;
     model->labels= NULL;
@@ -1559,8 +1977,8 @@ void InitMCSVMParam(struct MCSVMParameter *param) {
 
   param->kernel_type = RBF;
   param->degree = 1;
-  param->coef0 = 1;
-  param->gamma = 1;
+  param->coef0 = 0;
+  param->gamma = 0;
 
   param->epsilon = 1e-3;
   param->epsilon0 = 1-1e-6;
@@ -1594,6 +2012,9 @@ const char *CheckMCSVMParameter(const struct MCSVMParameter *param) {
 
   if (param->degree < 0)
     return "degree of polynomial kernel < 0";
+
+  if (param->num_folds < 2)
+    return "num of folds in cross validation must >= 2";
 
   if (param->cache_size <= 0)
     return "cache_size <= 0";
